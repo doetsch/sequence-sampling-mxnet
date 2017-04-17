@@ -15,7 +15,7 @@ parser.add_argument('--model-prefix', type=str, default=None,
                     help='path to save/load model')
 parser.add_argument('--load-epoch', type=int, default=0,
                     help='load from epoch')
-parser.add_argument('--num-layers', type=int, default=3,
+parser.add_argument('--num-layers', type=int, default=1,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=512,
                     help='hidden layer size')
@@ -36,7 +36,7 @@ parser.add_argument('--mom', type=float, default=0.0,
                     help='momentum for sgd')
 parser.add_argument('--wd', type=float, default=0.00001,
                     help='weight decay for sgd')
-parser.add_argument('--batch-size', type=int, default=32,
+parser.add_argument('--batch-size', type=int, default=15,
                     help='the batch size.')
 parser.add_argument('--disp-batches', type=int, default=50,
                     help='show progress for every n batches')
