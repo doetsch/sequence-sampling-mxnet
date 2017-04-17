@@ -1,5 +1,9 @@
 import numpy as np
 import mxnet as mx
+import random
+from mxnet.io import DataIter, DataBatch
+from mxnet import ndarray
+import h5py
 import bisect
 import argparse
 
@@ -123,32 +127,26 @@ class UtteranceIter(DataIter):
 
   def __init__(self, utterances, states, batch_size, sampling, data_name='data', label_name='labels'):
     super(UtteranceIter, self).__init__()
-    if sampling is None:
-      sampling = [i for i, j in enumerate(np.bincount([len(x) for x in utterances]))
-                 if j >= batch_size]
+    if not sampling:
+      sampling = [i for i, j in enumerate([len(x) for x in utterances])][::500]
 
     self.idx = []
     if isinstance(sampling, list):
       sampling.sort()
-      max_len = max([len(utt) for utt in utterances])
-      sampling.append(max_len)
+      self.max_len = max([len(utt) for utt in utterances])
+      if sampling[-1] < self.max_len:
+        sampling.append(self.max_len)
 
-      ndiscard = 0
       self.data = [[] for _ in sampling] + [[]] # last one for final bucket
       self.labels = [[] for _ in sampling] + [[]]  # last one for final bucket
       for utt, lab in zip(utterances, states):
         buck = bisect.bisect_left(sampling, len(utt))
-        if buck == len(sampling):
-          ndiscard += 1
-          continue
-        xin = np.full((sampling[sampling],len(utt[0])), 0, dtype='float32')
+        xin = np.full((sampling[buck],len(utt[0])), 0, dtype='float32')
         xin[:len(utt)] = utt
-        yout = np.full((sampling[sampling],), 0, dtype='int32')
+        yout = np.full((sampling[buck],), 0, dtype='int32')
         yout[:len(utt)] = lab
         self.data[buck].append(xin)
         self.labels[buck].append(yout)
-
-      print("WARNING: discarded %d sentences longer than the largest bucket." % ndiscard)
 
       for i, buck in enumerate(self.data):
         self.idx.extend([(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
@@ -166,10 +164,11 @@ class UtteranceIter(DataIter):
     self.data_name = data_name
     self.label_name = label_name
     self.sampling = sampling
+    self.default_key = len(sampling) - 1
 
     # we assume a batch major layout
-    self.provide_data = [(self.data_name, (batch_size, sampling[-1], data[0].shape[1]))]
-    self.provide_label = [(self.label_name, (batch_size, sampling[-1]))]
+    self.provide_data = [(self.data_name, (self.max_len, batch_size, self.data[self.default_key].shape[1]))]
+    self.provide_label = [(self.label_name, (self.max_len, batch_size))]
 
     self.reset()
 
@@ -184,8 +183,9 @@ class UtteranceIter(DataIter):
       self.nddata = []
       self.ndlabel = []
       for buck_utt,buck_lab in zip(self.data,self.labels):
-        self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
-        self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
+        if buck_utt.shape[0] > 0:
+          self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
+          self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
 
   def next(self):
     if self.curr_idx == len(self.idx):
@@ -198,13 +198,13 @@ class UtteranceIter(DataIter):
       label = self.ndlabel[i][j:j + self.batch_size]
 
       return DataBatch([data], [label], pad=0,
-                       bucket_key=self.buckets[i],
+                       bucket_key=self.sampling[i],
                        provide_data=[(self.data_name, data.shape)],
                        provide_label=[(self.label_name, label.shape)])
     self.curr_idx += 1
 
 
-def read_hdf5(fname, batching='default'):
+def read_hdf5(filename, batching='default'):
   h5 = h5py.File(filename, "r")
   lengths = h5["seqLengths"][...].T[0].tolist()
   xin = h5['inputs'][...]
@@ -227,15 +227,17 @@ def get_data():
     train_x, train_y, n_out = read_hdf5('./data/train.0001')
     valid_x, valid_y, _ = read_hdf5('./data/train.0002')
 
-    sampling = args.sampling.split(',')
-    if len(sampling) > 1: # bucket sampling
-      sampling = [ int(s) for s in sampling ]
-    else:
-      try:
-        hills = int(sampling)
-        sampling = hills
-      except ValueError:
-        pass
+    sampling = args.sampling
+    if sampling is not None:
+      sampling = sampling.split(',')
+      if len(sampling) > 1: # bucket sampling
+        sampling = [ int(s) for s in sampling ]
+      else:
+        try:
+          hills = int(sampling)
+          sampling = hills
+        except ValueError:
+          pass
 
     data_train  = UtteranceIter(train_x, train_y, args.batch_size, sampling=sampling)
     data_val    = UtteranceIter(valid_x, valid_y, args.batch_size, sampling=sampling)
@@ -260,14 +262,14 @@ def train(args):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
 
-        output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='NTC')
+        output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
         pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
 
-        return pred, ('data',), ('label',)
+        return pred, ('data',), ('labels',)
 
     if args.gpus:
         contexts = [mx.gpu(int(i)) for i in args.gpus.split(',')]
@@ -276,7 +278,7 @@ def train(args):
 
     model = mx.mod.BucketingModule(
         sym_gen             = sym_gen,
-        default_bucket_key  = data_train.default_bucket_key,
+        default_bucket_key  = data_train.default_key,
         context             = contexts)
 
     if args.load_epoch:
