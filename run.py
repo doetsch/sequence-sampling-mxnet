@@ -1,5 +1,6 @@
 import numpy as np
 import mxnet as mx
+import bisect
 import argparse
 
 parser = argparse.ArgumentParser(description="Sequence sampling experiments on CHiME-4",
@@ -14,9 +15,7 @@ parser.add_argument('--num-layers', type=int, default=2,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=200,
                     help='hidden layer size')
-parser.add_argument('--num-embed', type=int, default=200,
-                    help='embedding layer size')
-parser.add_argument('--bidirectional', type=bool, default=False,
+parser.add_argument('--bidirectional', type=bool, default=True,
                     help='whether to use bidirectional layers')
 parser.add_argument('--gpus', type=str,
                     help='list of gpus to run, e.g. 0 or 0,2,5. empty means using cpu. ' \
@@ -48,33 +47,202 @@ parser.add_argument('--stack-rnn', default=False,
 parser.add_argument('--dropout', type=float, default='0.0',
                     help='dropout probability (1.0 - keep probability)')
 
-#buckets = [32]
-buckets = [10, 20, 30, 40, 50, 60]
+parser.add_argument('--sampling', type=str, default=None,
+                    help='sequence batch sampling method: random, sorted, #partitions '
+                         'in sinusoidal sampling or comma separated list of buckets')
 
 start_label = 1
 invalid_label = 0
 
-def tokenize_text(fname, vocab=None, invalid_label=-1, start_label=0):
-    lines = open(fname).readlines()
-    lines = [filter(None, i.split(' ')) for i in lines]
-    sentences, vocab = mx.rnn.encode_sentences(lines, vocab=vocab, invalid_label=invalid_label, start_label=start_label)
-    return sentences, vocab
+class HDF5DATA(mx.io.DataIter):
+  def one_hot(self, x):
+    xs = x.reshape(x.shape[0] * x.shape[1], ) if len(x.shape) == 2 else x
+    xs[xs==10429] = 0
+    res = np.zeros(list(xs.shape) + [self.n_out],'int32')
+    res[np.arange(xs.shape[0]), xs] = 1
+    return res.reshape(x.shape[0],x.shape[1],self.n_out) if len(x.shape) == 2 else res
 
-def get_data(layout):
-    train_sent, vocab = tokenize_text("./data/ptb.train.txt", start_label=start_label,
-                                      invalid_label=invalid_label)
-    val_sent, _ = tokenize_text("./data/ptb.test.txt", vocab=vocab, start_label=start_label,
-                                invalid_label=invalid_label)
+  def __init__(self, filename):
+    self.batches = []
+    h5 = h5py.File(filename, "r")
+    lengths = h5["seqLengths"][...].T[0].tolist()
+    xin = h5['inputs'][...]
+    yin = h5['targets/data']['classes'][...]
+    yin[yin==10429] = 0
+    self.n_out = h5['targets/size'].attrs['classes']
+    self.n_in = xin.shape[1]
+    self.n_seqs = len(lengths)
+    i = 0
+    while i < len(lengths):
+      end = min(i+BATCH_SIZE,len(lengths))
+      batch_x = np.zeros((MAX_LEN, BATCH_SIZE, xin.shape[1]), 'float32')
+      batch_y = np.zeros((MAX_LEN, BATCH_SIZE), 'int8')
+      #batch_y = np.zeros((BATCH_SIZE, MAX_LEN), 'int32')
+      batch_i = np.zeros((BATCH_SIZE, MAX_LEN), 'int8')
+      for j in xrange(end-i):
+        batch_x[:lengths[i+j],j] = (xin[sum(lengths[:i+j]):sum(lengths[:i+j+1])])
+        #batch_y[j,:lengths[i+j]] = self.one_hot(yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])])
+        batch_y[:lengths[i+j],j] = yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])]
+        #batch_y[j * MAX_LEN:j * MAX_LEN + lengths[i+j]] = yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])]
+        batch_i[j,:lengths[i+j]] = 1
+      self.batches.append((batch_x,batch_y,batch_i,MAX_LEN)) #max(lengths[i:end])))
+      i = end
+    self.lengths = lengths
+    h5.close()
+    self.batch_idx = 0
 
-    data_train  = mx.rnn.BucketSentenceIter(train_sent, args.batch_size, buckets=buckets,
-                                            invalid_label=invalid_label, layout=layout)
-    data_val    = mx.rnn.BucketSentenceIter(val_sent, args.batch_size, buckets=buckets,
-                                            invalid_label=invalid_label, layout=layout)
-    return data_train, data_val, vocab
+  def next(self):
+    if self.batch_idx == len(self.batches):
+      self.batch_idx = 0
+      return None, None, None, None
+    self.batch_idx += 1
+    return self.batches[self.batch_idx-1]
+
+  def __iter__(self):
+    return self
+
+class UtteranceIter(DataIter):
+  """A data iterator for acoustic modeling of frame-wise labeled data.
+  The iterator supports bucketing based on predefined bucket sizes,
+  sorted and random sequence sampling, and sinusoidal sampling.  
+
+  Parameters
+  ----------
+  utterances : list of list of list of floats
+      utterance feature vectors with #sequences as major
+  batch_size : int
+      number of sequences per batch
+  sampling : str, int, or list of int
+      either 'sorted' or 'random' 
+      or number of bins in sinusoidal sampling 
+      or size of data buckets (automatically generated if None).
+  layout : str
+      format of data and label. 'NT' means (batch_size, length)
+      and 'TN' means (length, batch_size).
+  """
+
+  def __init__(self, utterances, states, batch_size, sampling, data_name='data', label_name='labels'):
+    super(UtteranceIter, self).__init__()
+    if sampling is None:
+      sampling = [i for i, j in enumerate(np.bincount([len(x) for x in utterances]))
+                 if j >= batch_size]
+
+    self.idx = []
+    if isinstance(sampling, list):
+      sampling.sort()
+      max_len = max([len(utt) for utt in utterances])
+      sampling.append(max_len)
+
+      ndiscard = 0
+      self.data = [[] for _ in sampling] + [[]] # last one for final bucket
+      self.labels = [[] for _ in sampling] + [[]]  # last one for final bucket
+      for utt, lab in zip(utterances, states):
+        buck = bisect.bisect_left(sampling, len(utt))
+        if buck == len(sampling):
+          ndiscard += 1
+          continue
+        xin = np.full((sampling[sampling],len(utt[0])), 0, dtype='float32')
+        xin[:len(utt)] = utt
+        yout = np.full((sampling[sampling],), 0, dtype='int32')
+        yout[:len(utt)] = lab
+        self.data[buck].append(xin)
+        self.labels[buck].append(yout)
+
+      print("WARNING: discarded %d sentences longer than the largest bucket." % ndiscard)
+
+      for i, buck in enumerate(self.data):
+        self.idx.extend([(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
+    else:
+      raise NotImplementedError('sampling %s not supported' % str(sampling))
+
+    self.data = [np.asarray(i, dtype='float32') for i in self.data]
+    self.labels = [np.asarray(i, dtype='int32') for i in self.labels]
+    self.curr_idx = 0
+
+    self.batch_size = batch_size
+    self.sampling = sampling
+    self.nddata = []
+    self.ndlabel = []
+    self.data_name = data_name
+    self.label_name = label_name
+    self.sampling = sampling
+
+    # we assume a batch major layout
+    self.provide_data = [(self.data_name, (batch_size, sampling[-1], data[0].shape[1]))]
+    self.provide_label = [(self.label_name, (batch_size, sampling[-1]))]
+
+    self.reset()
+
+  def reset(self):
+    self.curr_idx = 0
+
+    if isinstance(self.sampling, list):
+      random.shuffle(self.idx) # shuffle bucket index
+      for buck in self.data: # shuffle sequence index within bucket
+        np.random.shuffle(buck)
+
+      self.nddata = []
+      self.ndlabel = []
+      for buck_utt,buck_lab in zip(self.data,self.labels):
+        self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
+        self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
+
+  def next(self):
+    if self.curr_idx == len(self.idx):
+      raise StopIteration
+
+    if isinstance(self.sampling, list):
+      i, j = self.idx[self.curr_idx]
+
+      data = self.nddata[i][j:j + self.batch_size]
+      label = self.ndlabel[i][j:j + self.batch_size]
+
+      return DataBatch([data], [label], pad=0,
+                       bucket_key=self.buckets[i],
+                       provide_data=[(self.data_name, data.shape)],
+                       provide_label=[(self.label_name, label.shape)])
+    self.curr_idx += 1
+
+
+def read_hdf5(fname, batching='default'):
+  h5 = h5py.File(filename, "r")
+  lengths = h5["seqLengths"][...].T[0].tolist()
+  xin = h5['inputs'][...]
+  yin = h5['targets/data']['classes'][...]
+
+  utterances = []
+  states = []
+  offset = 0
+  for length in lengths:
+    utterances.append(xin[offset:offset + length])
+    states.append(yin[offset:offset + length])
+    offset += length
+
+  h5.close()
+  return utterances, states
+
+
+def get_data():
+    train_x, train_y = read_hdf5('./data/train.0001')
+    valid_x, valid_y = read_hdf5('./data/train.0002')
+
+    sampling = args.sampling.split(',')
+    if len(sampling) > 1: # bucket sampling
+      sampling = [ int(s) for s in sampling ]
+    else:
+      try:
+        hills = int(sampling)
+        sampling = hills
+      except ValueError:
+        pass
+
+    data_train  = UtteranceIter(train_x, train_y, args.batch_size, sampling=sampling)
+    data_val    = UtteranceIter(valid_x, valid_y, args.batch_size, sampling=sampling)
+    return data_train, data_val
 
 
 def train(args):
-    data_train, data_val, vocab = get_data('TN')
+    data_train, data_val = get_data()
     if args.stack_rnn:
         cell = mx.rnn.SequentialRNNCell()
         for i in range(args.num_layers):
