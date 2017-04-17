@@ -15,9 +15,9 @@ parser.add_argument('--model-prefix', type=str, default=None,
                     help='path to save/load model')
 parser.add_argument('--load-epoch', type=int, default=0,
                     help='load from epoch')
-parser.add_argument('--num-layers', type=int, default=2,
+parser.add_argument('--num-layers', type=int, default=3,
                     help='number of stacked RNN layers')
-parser.add_argument('--num-hidden', type=int, default=200,
+parser.add_argument('--num-hidden', type=int, default=512,
                     help='hidden layer size')
 parser.add_argument('--bidirectional', type=bool, default=True,
                     help='whether to use bidirectional layers')
@@ -55,56 +55,6 @@ parser.add_argument('--sampling', type=str, default=None,
                     help='sequence batch sampling method: random, sorted, #partitions '
                          'in sinusoidal sampling or comma separated list of buckets')
 
-start_label = 1
-invalid_label = 0
-
-class HDF5DATA(mx.io.DataIter):
-  def one_hot(self, x):
-    xs = x.reshape(x.shape[0] * x.shape[1], ) if len(x.shape) == 2 else x
-    xs[xs==10429] = 0
-    res = np.zeros(list(xs.shape) + [self.n_out],'int32')
-    res[np.arange(xs.shape[0]), xs] = 1
-    return res.reshape(x.shape[0],x.shape[1],self.n_out) if len(x.shape) == 2 else res
-
-  def __init__(self, filename):
-    self.batches = []
-    h5 = h5py.File(filename, "r")
-    lengths = h5["seqLengths"][...].T[0].tolist()
-    xin = h5['inputs'][...]
-    yin = h5['targets/data']['classes'][...]
-    yin[yin==10429] = 0
-    self.n_out = h5['targets/size'].attrs['classes']
-    self.n_in = xin.shape[1]
-    self.n_seqs = len(lengths)
-    i = 0
-    while i < len(lengths):
-      end = min(i+BATCH_SIZE,len(lengths))
-      batch_x = np.zeros((MAX_LEN, BATCH_SIZE, xin.shape[1]), 'float32')
-      batch_y = np.zeros((MAX_LEN, BATCH_SIZE), 'int8')
-      #batch_y = np.zeros((BATCH_SIZE, MAX_LEN), 'int32')
-      batch_i = np.zeros((BATCH_SIZE, MAX_LEN), 'int8')
-      for j in xrange(end-i):
-        batch_x[:lengths[i+j],j] = (xin[sum(lengths[:i+j]):sum(lengths[:i+j+1])])
-        #batch_y[j,:lengths[i+j]] = self.one_hot(yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])])
-        batch_y[:lengths[i+j],j] = yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])]
-        #batch_y[j * MAX_LEN:j * MAX_LEN + lengths[i+j]] = yin[sum(lengths[:i+j]):sum(lengths[:i+j+1])]
-        batch_i[j,:lengths[i+j]] = 1
-      self.batches.append((batch_x,batch_y,batch_i,MAX_LEN)) #max(lengths[i:end])))
-      i = end
-    self.lengths = lengths
-    h5.close()
-    self.batch_idx = 0
-
-  def next(self):
-    if self.batch_idx == len(self.batches):
-      self.batch_idx = 0
-      return None, None, None, None
-    self.batch_idx += 1
-    return self.batches[self.batch_idx-1]
-
-  def __iter__(self):
-    return self
-
 class UtteranceIter(DataIter):
   """A data iterator for acoustic modeling of frame-wise labeled data.
   The iterator supports bucketing based on predefined bucket sizes,
@@ -128,7 +78,7 @@ class UtteranceIter(DataIter):
   def __init__(self, utterances, states, batch_size, sampling, data_name='data', label_name='labels'):
     super(UtteranceIter, self).__init__()
     if not sampling:
-      sampling = [i for i, j in enumerate([len(x) for x in utterances])][::500]
+      sampling = [i for i, j in enumerate([len(x) for x in utterances])][500::500]
 
     self.idx = []
     if isinstance(sampling, list):
@@ -137,8 +87,8 @@ class UtteranceIter(DataIter):
       if sampling[-1] < self.max_len:
         sampling.append(self.max_len)
 
-      self.data = [[] for _ in sampling] + [[]] # last one for final bucket
-      self.labels = [[] for _ in sampling] + [[]]  # last one for final bucket
+      self.data = [[] for _ in sampling]
+      self.labels = [[] for _ in sampling]
       for utt, lab in zip(utterances, states):
         buck = bisect.bisect_left(sampling, len(utt))
         xin = np.full((sampling[buck],len(utt[0])), 0, dtype='float32')
@@ -164,11 +114,11 @@ class UtteranceIter(DataIter):
     self.data_name = data_name
     self.label_name = label_name
     self.sampling = sampling
-    self.default_key = len(sampling) - 1
+    self.default_key = max(sampling)
 
-    # we assume a batch major layout
-    self.provide_data = [(self.data_name, (self.max_len, batch_size, self.data[self.default_key].shape[1]))]
-    self.provide_label = [(self.label_name, (self.max_len, batch_size))]
+    # we assume time major layout
+    self.provide_data = [(self.data_name, (self.default_key, batch_size, self.data[-1].shape[2]))]
+    self.provide_label = [(self.label_name, (self.default_key, batch_size))]
 
     self.reset()
 
@@ -183,9 +133,8 @@ class UtteranceIter(DataIter):
       self.nddata = []
       self.ndlabel = []
       for buck_utt,buck_lab in zip(self.data,self.labels):
-        #if buck_utt.shape[0] > 0:
         self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
-        self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
+        self.ndlabel.append(ndarray.array(buck_lab, dtype='float32'))
 
   def next(self):
     if self.curr_idx == len(self.idx):
@@ -195,14 +144,17 @@ class UtteranceIter(DataIter):
       i, j = self.idx[self.curr_idx]
 
       data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size].T
+      label = self.ndlabel[i][j:j + self.batch_size]
       data = ndarray.swapaxes(data, 1, 0) # TBD
-      #label = ndarray.swapaxes(label, 1, 0)
+      label = ndarray.swapaxes(label, 1, 0)
+      #print "next:", i, j, data.shape,label.shape
 
       return DataBatch([data], [label], pad=0,
                        bucket_key=self.sampling[i],
                        provide_data=[(self.data_name, data.shape)],
                        provide_label=[(self.label_name, label.shape)])
+    else:
+      assert False
     self.curr_idx += 1
 
 
@@ -245,7 +197,6 @@ def get_data():
     data_val    = UtteranceIter(valid_x, valid_y, args.batch_size, sampling=sampling)
     return data_train, data_val, n_out
 
-
 def train(args):
     data_train, data_val, n_out = get_data()
     if args.stack_rnn:
@@ -260,6 +211,13 @@ def train(args):
         cell = mx.rnn.FusedRNNCell(args.num_hidden, num_layers=args.num_layers, dropout=args.dropout,
                                    mode='lstm', bidirectional=args.bidirectional)
 
+    def sym_gen2(seq_len):
+        sym = lstm_unroll(1, seq_len, 16, num_hidden=128,
+                          num_label=1501, num_hidden_proj=128)
+        data_names = ['data'] + state_names
+        label_names = ['softmax_label']
+        return (sym, data_names, label_names)
+
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
@@ -267,7 +225,11 @@ def train(args):
         #label = mx.sym.swapaxes(label, dim1=0, dim2=1)
 
         output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
+        #data = mx.sym.Reshape(data, shape=(-1, 16))
+        #print data.infer_shape()
+        pred = mx.sym.FullyConnected(data=data, num_hidden=n_out, name='fakeout')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
+        #pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
@@ -300,10 +262,26 @@ def train(args):
     if args.optimizer not in ['adadelta', 'adagrad', 'adam', 'rmsprop']:
         opt_params['momentum'] = args.mom
 
+    class FrameError(mx.metric.EvalMetric):
+      """Calculate frame error rate."""
+
+      def __init__(self):
+        super(FrameError, self).__init__('frame-error')
+
+      def update(self, labels, preds):
+        for label, pred_label in zip(labels, preds):
+          if pred_label.shape != label.shape:
+            pred_label = ndarray.argmax_channel(pred_label)
+          pred_label = pred_label.asnumpy().astype('int32')
+          label = label.asnumpy().astype('int32').flatten()
+
+          self.sum_metric += (pred_label.flat != label.flat).sum()
+          self.num_inst += len(pred_label.flat)
+
     model.fit(
         train_data          = data_train,
         eval_data           = data_val,
-        eval_metric         = mx.metric.Perplexity(invalid_label),
+        eval_metric         = FrameError(),
         kvstore             = args.kv_store,
         optimizer           = args.optimizer,
         optimizer_params    = opt_params, 
