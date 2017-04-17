@@ -153,8 +153,8 @@ class UtteranceIter(DataIter):
     else:
       raise NotImplementedError('sampling %s not supported' % str(sampling))
 
-    self.data = [np.asarray(i, dtype='float32') for i in self.data]
-    self.labels = [np.asarray(i, dtype='int32') for i in self.labels]
+    self.data = [np.asarray(i, dtype='float32') for i in self.data] # BTD
+    self.labels = [np.asarray(i, dtype='int32') for i in self.labels] # BT
     self.curr_idx = 0
 
     self.batch_size = batch_size
@@ -183,9 +183,9 @@ class UtteranceIter(DataIter):
       self.nddata = []
       self.ndlabel = []
       for buck_utt,buck_lab in zip(self.data,self.labels):
-        if buck_utt.shape[0] > 0:
-          self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
-          self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
+        #if buck_utt.shape[0] > 0:
+        self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
+        self.ndlabel.append(ndarray.array(buck_lab, dtype='int32'))
 
   def next(self):
     if self.curr_idx == len(self.idx):
@@ -195,7 +195,9 @@ class UtteranceIter(DataIter):
       i, j = self.idx[self.curr_idx]
 
       data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size]
+      label = self.ndlabel[i][j:j + self.batch_size].T
+      data = ndarray.swapaxes(data, 1, 0) # TBD
+      #label = ndarray.swapaxes(label, 1, 0)
 
       return DataBatch([data], [label], pad=0,
                        bucket_key=self.sampling[i],
@@ -261,6 +263,8 @@ def train(args):
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
+        #data = mx.sym.swapaxes(data,dim1=0,dim2=1)
+        #label = mx.sym.swapaxes(label, dim1=0, dim2=1)
 
         output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
