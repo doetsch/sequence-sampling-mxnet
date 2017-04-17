@@ -209,6 +209,7 @@ def read_hdf5(fname, batching='default'):
   lengths = h5["seqLengths"][...].T[0].tolist()
   xin = h5['inputs'][...]
   yin = h5['targets/data']['classes'][...]
+  n_out = h5['targets/size'].attrs['classes']
 
   utterances = []
   states = []
@@ -219,12 +220,12 @@ def read_hdf5(fname, batching='default'):
     offset += length
 
   h5.close()
-  return utterances, states
+  return utterances, states, n_out
 
 
 def get_data():
-    train_x, train_y = read_hdf5('./data/train.0001')
-    valid_x, valid_y = read_hdf5('./data/train.0002')
+    train_x, train_y, n_out = read_hdf5('./data/train.0001')
+    valid_x, valid_y, _ = read_hdf5('./data/train.0002')
 
     sampling = args.sampling.split(',')
     if len(sampling) > 1: # bucket sampling
@@ -238,11 +239,11 @@ def get_data():
 
     data_train  = UtteranceIter(train_x, train_y, args.batch_size, sampling=sampling)
     data_val    = UtteranceIter(valid_x, valid_y, args.batch_size, sampling=sampling)
-    return data_train, data_val
+    return data_train, data_val, n_out
 
 
 def train(args):
-    data_train, data_val = get_data()
+    data_train, data_val, n_out = get_data()
     if args.stack_rnn:
         cell = mx.rnn.SequentialRNNCell()
         for i in range(args.num_layers):
@@ -257,19 +258,16 @@ def train(args):
 
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
-        label = mx.sym.Variable('softmax_label')
-        embed = mx.sym.Embedding(data=data, input_dim=len(vocab), output_dim=args.num_embed,name='embed')
+        label = mx.sym.Variable('labels')
 
-        output, _ = cell.unroll(seq_len, inputs=embed, merge_outputs=True, layout='TNC')
-
-        pred = mx.sym.Reshape(output,
-                shape=(-1, args.num_hidden*(1+args.bidirectional)))
-        pred = mx.sym.FullyConnected(data=pred, num_hidden=len(vocab), name='pred')
+        output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='NTC')
+        pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
+        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
         pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
 
-        return pred, ('data',), ('softmax_label',)
+        return pred, ('data',), ('label',)
 
     if args.gpus:
         contexts = [mx.gpu(int(i)) for i in args.gpus.split(',')]
