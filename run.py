@@ -30,17 +30,17 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=0.001,
+parser.add_argument('--lr', type=float, default=1.0,
                     help='initial learning rate')
-parser.add_argument('--optimizer', type=str, default='adam',
+parser.add_argument('--optimizer', type=str, default='adadelta',
                     help='the optimizer type')
 parser.add_argument('--mom', type=float, default=0.0,
                     help='momentum for sgd')
 parser.add_argument('--wd', type=float, default=0.00001,
                     help='weight decay for sgd')
-parser.add_argument('--batch-size', type=int, default=15,
+parser.add_argument('--batch-size', type=int, default=5,
                     help='the batch size.')
-parser.add_argument('--disp-batches', type=int, default=50,
+parser.add_argument('--disp-batches', type=int, default=100,
                     help='show progress for every n batches')
 # When training a deep, complex model, it's recommended to stack fused RNN cells (one
 # layer per cell) together instead of one with all layers. The reason is that fused RNN
@@ -94,6 +94,7 @@ class UtteranceIter(DataIter):
       for utt, lab in zip(utterances, states):
         buck = bisect.bisect_left(sampling, len(utt))
         xin = np.full((sampling[buck],len(utt[0])), 0, dtype='float32')
+        n_in = len(utt[0])
         xin[:len(utt)] = utt
         yout = np.full((sampling[buck],), 0, dtype='int32')
         yout[:len(utt)] = lab
@@ -121,7 +122,7 @@ class UtteranceIter(DataIter):
     self.shuffle = shuffle
 
     # we assume time major layout
-    self.provide_data = [(self.data_name, (self.default_key, batch_size, self.data[-1].shape[2]))]
+    self.provide_data = [(self.data_name, (self.default_key, batch_size, n_in))]
     self.provide_label = [(self.label_name, (self.default_key, batch_size))]
 
     self.reset()
@@ -152,7 +153,6 @@ class UtteranceIter(DataIter):
       label = self.ndlabel[i][j:j + self.batch_size]
       data = ndarray.swapaxes(data, 1, 0) # TBD
       label = ndarray.swapaxes(label, 1, 0)
-      #print "next:", i, j, data.shape,label.shape
 
       batch = DataBatch([data], [label], pad=0,
                         bucket_key=self.sampling[i],
@@ -186,7 +186,7 @@ def read_hdf5(filename, batching='default'):
 
 def get_data():
     train_n, train_x, train_y, n_out = read_hdf5('./data/train.0001')
-    valid_n, valid_x, valid_y, _ = read_hdf5('./data/train.0002')
+    valid_n, valid_x, valid_y, _ = read_hdf5('./data/valid.0001')
 
     sampling = args.sampling
     if sampling is not None:
@@ -267,7 +267,6 @@ def train(args):
         #label = mx.sym.swapaxes(label, dim1=0, dim2=1)
 
         output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
-        pred = mx.sym.FullyConnected(data=data, num_hidden=n_out, name='fakeout')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
@@ -338,8 +337,7 @@ def test(args):
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
-        output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
-        pred = mx.sym.FullyConnected(data=data, num_hidden=n_out, name='fakeout')
+        output, _ = stack.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
@@ -355,7 +353,7 @@ def test(args):
 
     model = mx.mod.BucketingModule(
         sym_gen             = sym_gen,
-        default_bucket_key  = data_val.default_bucket_key,
+        default_bucket_key  = data_val.default_key,
         context             = contexts)
     model.bind(data_val.provide_data, data_val.provide_label, for_training=False)
 
