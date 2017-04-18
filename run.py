@@ -80,7 +80,7 @@ class UtteranceIter(DataIter):
   def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
     if not sampling:
-      sampling = [i for i, j in enumerate([len(x) for x in utterances])][500::500]
+      sampling = [i for i, j in enumerate([len(x) for x in utterances])] #[500::500]
 
     self.idx = []
     if isinstance(sampling, list):
@@ -96,7 +96,7 @@ class UtteranceIter(DataIter):
         xin = np.full((sampling[buck],len(utt[0])), 0, dtype='float32')
         n_in = len(utt[0])
         xin[:len(utt)] = utt
-        yout = np.full((sampling[buck],), 0, dtype='int32')
+        yout = np.full((sampling[buck],), -1, dtype='int32')
         yout[:len(utt)] = lab
         self.data[buck].append(xin)
         self.labels[buck].append(yout)
@@ -235,8 +235,8 @@ class PosteriorExtraction(mx.metric.EvalMetric):
 
   def update(self, labels, preds):
     for label, pred_label in zip(labels, preds):
-      times = zip(range(0, obj['source']['inputs']['lengths'][i]), range(1, obj['source']['inputs']['lengths'][i] + 1))
       pred_label = np.log(pred_label.asnumpy().astype('float32'))
+      times = zip(range(0, pred_label.shape[0]), range(1, pred_label.shape[0] + 1))
       self.file.addFeatureCache(self.names[self.cur_idx],pred_label,times)
 
 def train(args):
