@@ -29,7 +29,8 @@
 % \setlength{\textfloatsep}{0.4cm}
 
 
-\title{A comparative study of batch-construction strategies for recurrent neural networks in MXNet}
+\title{A comparative study of batch construction strategies \\
+	 for recurrent neural networks in MXNet}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% If multiple authors, uncomment and edit the lines shown below.       %%
@@ -69,7 +70,7 @@
   %
   \begin{abstract}
   	 In this work we compare different methods for sequence selection for mini-batch training
-  	 of recurrent neural networks. While popular implementations like Tensorflow and MXNet suggest 
+  	 of recurrent neural networks. While popular implementations like TensorFlow and MXNet suggest 
   	 a bucketing approach to improve the parallelization capabilities of the recurrent training process, 
   	 we propose several simple ordering strategies that are able to compete both in training time and 
   	 recognition performance while being conceptually simpler. We compare our method with various other
@@ -82,35 +83,35 @@
   	Neural network based acoustic modeling became the de-facto standard in automatic speech recognition (ASR)
   	and related tasks. Modeling contextual information over long distances in the input signal hereby showed to 
   	be of fundamental importance for optimal system performance. Modern acoustic models therefore use recurrent 
-  	neural network models to encode information over long time gaps. In particular the long short-term memory (LSTM)
-  	has been shown to work very well in these tasks and most current state-of-the-art systems incorporate LSTMs
-  	in their acoustic models. While it is common practice to optimize a frame-by-frame labeling obtained from a 
-  	previously trained system, sequence level criteria that train the acoustic model and the alignment model jointly
+  	neural networks (RNN) to model long temporal dependencies. In particular the long short-term memory (LSTM)
+  	has been shown to work very well on these tasks and most current state-of-the-art systems incorporate LSTMs
+  	in their acoustic models. While it is common practice to train the
+  	models on a frame-by-frame labeling obtained from a 
+  	previously trained system, sequence-level criteria that optimize the acoustic model and the alignment model jointly
   	are becoming increasingly popular. As an example, the connectionist temporal classification (CTC) \cite{CTC}
-  	enables fully integrated training of acoustic models without assuming any alignment to be given. Sequence-level
+  	enables fully integrated training of acoustic models without assuming a frame-level alignment to be given. Sequence-level
   	criteria however require to train on full utterances, where it is possible to train frame-wise labeled systems
   	on sub-sequences of any resolution.
   	
-    Training of recurrent neural networks (RNN) for large vocabulary continuous speech recognition (LVCSR)
+    Training of recurrent neural networks for large vocabulary continuous speech recognition (LVCSR)
     tasks is computationally very expensive and the sequential nature of recurrent process prohibits to
-    parallelize the training on an input frame basis. This requires to work on large batches of sequences
-    at once and training time as well as recognition performance can vary strongly depending on the choice of how
+    parallelize the training over input frames. A robust optimization requires to work on large batches of sequences
+    and training time as well as recognition performance can vary strongly depending on the choice of how
     batches were put together. The main reason is that combining sequences of different length into the same batch requires 
     to extend the length of each sequence to the longest sequence within the batch, usually by appending zeros. These zero frames 
-    are then later on ignored when gradients are computed but they nevertheless require computing power during RNN
-    forwarding.
+    are ignored later on when gradients are computed but the forward-propagation of zeros through the RNN is a waste of computing power.
     
-    A straight forward strategy to minimize zero padding is to sort the sequences by length and to partition them into
-    batches afterwards. However, there are significant drawbacks to this method: First, the sequence order remains constant
-    and therefore the intra-batch variability is very low since the same sequences are usually combined into the same batch. Secondly, the strategy favors to put very similar sequences into a single batch, since sequences of similar length often also share other properties.
-    One way to overcome this limitation was proposed within Tensorflow and is also used as recommended 
+    A straight-forward strategy to minimize zero padding is to sort the sequences by length and to partition them into
+    batches afterwards. However, there are significant drawbacks to this method. First, the sequence order remains constant in each epoch 
+    and therefore the intra-batch variability is very low since the same sequences are usually combined into the same batch. Second, the strategy favors putting very similar sequences into the same batch, since short sequences often tend to share other properties.
+    One way to overcome this limitation was proposed within TensorFlow and is also used as recommended 
     behavior in MXNet The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
     a range of sequence lengths and each training sample is then assigned to the bucket that corresponds to its length.
-    Afterwards a batch is constructed from a randomly chosen bucket by selecting all or some sequences within the it.
+    Afterwards a batch is constructed from a randomly chosen bucket by selecting all or some sequences from it.
     The concept somehow mitigates the issue of zero padding if suitable length ranges can be defined, while still allowing for 
-    some kind of randomness at least when sequences are selected within a bucket. However, buckets have to be made very large 
-    in order to ensure a sufficiently large variability within batches, On the other hand, making buckets too large will 
-    increase training time due to irrelevant computations on zero padded frames. Setting these hyperparameters correctly is
+    some level of randomness at least when sequences are selected within a bucket. However, buckets have to be made very large 
+    in order to ensure a sufficiently large variability within batches. On the other hand, making buckets too large will 
+    increase training time due to irrelevant computations on zero padded frames. Setting these hyper-parameters correctly is
     therefore of fundamental importance for fast and robust acoustic model training.
     
     In this work we propose a simple batch construction strategy that does not rely on such a hyper-parametrization. The method 

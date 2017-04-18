@@ -1,3 +1,40 @@
+@Comment conferences
+@String{ICASSP ={{IEEE} Intern.\ Conf.\ on Acoustics, Speech, and Signal Processing ({ICASSP})}}
+@String{ASRU ={{IEEE} Automatic Speech Recognition and Understanding Workshop ({ASRU})}}
+@String{EUROSPEECH ={European Conf.\ on Speech Communication and Technology ({Eurospeech})}}
+@STRING{ICSLP ={Intern.\ Conf.\ on Spoken Language Processing ({ICSLP})}}
+@STRING{IWSLT ={International Workshop on Spoken Language Translation ({IWSLT})}}
+@STRING{INTERSPEECH ={Interspeech}}
+@STRING{ITW ={{IEEE} Information Theory Workshop}}
+@STRING{ICPR ={Intern.\ Conf.\ on Pattern Recognition}}
+@String{ICML ={Intern.\ Conf.\ on Machine Learning ({ICML})}}
+@String{ICLR ={Intern.\ Conf.\ on Learning Representations (ICLR)}}
+@String{ISIT ={{IEEE} Intern.\ Symposium on Information Theory ({ISIT})}}
+@String{LREC ={Intern.\ Conf.\ on Language Resources and Evaluation ({LREC})}}
+@String{NIPS ={Advances in Neural Information Processing Systems ({NIPS})}}
+@String{ACL ={Annual Meeting of the Association for Computational Linguistics (ACL)}}
+@String{ACL ={ACL}}
+@String{EMNLP ={Proceedings of the Conf.\ on Empirical Methods in Natural Language Processing (EMNLP)}}
+@String{ICDAR ={Intern.\ Conf.\ on Document Analysis and Recognition (ICDAR)}}
+@STRING{GALE ={Handbook of Natural Language processing and Machine Translation: {DARPA} Global Autonomous Language Exploitation ({GALE})}}
+@STRING{SAPA ={Workshop on Statistical and Perceptual Audition ({SAPA})}}
+@STRING{SLT ={{IEEE} Workshop on Spoken Language Technology ({SLT})}}
+@STRING{NAACL ={Conference of the North American Chapter of the Association for Computational Linguistics ({NAACL})}}
+@STRING{SSPW ={IEEE Statistical Signal Processing Workshop}}
+@String{AISTATS ={Intern.\ Conf.\ on Artificial Intelligence and Statistics (AISTATS)}}
+
+@Comment journals
+@String{SPECOM ={Speech Communication}}
+@STRING{SAP ={{IEEE} Transactions on Speech and Audio Processing}}
+@STRING{ASL ={{IEEE} Transactions on Audio, Speech, and Language Processing}}
+@STRING{ASLACM ={{IEEE}/{ACM} Transactions on Audio, Speech, and Language Processing}}
+@STRING{ASSP ={{IEEE} Transactions on Acoustics, Speech, and Signal Processing}}
+@STRING{JASA ={Journal of the Acoustical Society of America}}
+@STRING{LAA ={Journal of Linear Algebra and Its Applications}}
+@STRING{ACMMS ={ACM Transactions on Mathematical Software}}
+@STRING{CSL ={Computer Speech and Language}}
+@STRING{PAMI ={{IEEE} Transactions on Pattern Analysis and Machine Intelligence}}
+
 @article{Davis80-COP,
 	author =    {Steven B. Davis and Paul Mermelstein},
 	title =     {Comparison of Parametric Representation for Monosyllabic Word Recognition in Continuously Spoken Sentences},
@@ -75,7 +112,7 @@
 	year={2015}
 }
 
-@article{mxnet,
+@inproceedings{mxnet,
 	author    = {Tianqi Chen and
 	Mu Li and
 	Yutian Li and
@@ -86,17 +123,17 @@
 	Bing Xu and
 	Chiyuan Zhang and
 	Zheng Zhang},
-	title     = {MXNet: {A} Flexible and Efficient Machine Learning Library for Heterogeneous
+	title     = {{MXNet}: {A} Flexible and Efficient Machine Learning Library for Heterogeneous
 	Distributed Systems},
-	journal   = {CoRR},
-	volume    = {abs/1512.01274},
-	year      = {2015}
+	booktitle   = {Neural Information Processing Systems, Workshop on Machine Learning Systems},
+	year      = 2015,
+	month = dec,
+	address = {Montreal, Canada},
 }
 
 @misc{tensorflow,
 	title={{TensorFlow}: Large-Scale Machine Learning on Heterogeneous Systems},
 	url={http://tensorflow.org/},
-	note={Software available from tensorflow.org},
 	author={
 	Mart\'{\i}n~Abadi and
 	Ashish~Agarwal and
@@ -138,7 +175,8 @@
 	Martin~Wicke and
 	Yuan~Yu and
 	Xiaoqiang~Zheng},
-	year={2015},
+	year=2015,
+	month=nov,
 }
 
 @article{caffe,
@@ -488,42 +526,40 @@
 
 @INPROCEEDINGS{Khomenko06, 
 	author={V. Khomenko and O. Shyshkov and O. Radyvonenko and K. Bokhan}, 
-	booktitle={2016 IEEE First International Conference on Data Stream Mining Processing (DSMP)}, 
-	title={Accelerating recurrent neural network training using sequence bucketing and multi-GPU data parallelization}, 
+	booktitle={IEEE First International Conference on Data Stream Mining Processing (DSMP)}, 
+	title={Accelerating recurrent neural network training using sequence bucketing and multi-{GPU} data parallelization}, 
 	pages={100-103}, 
-	keywords={batch processing (computers);data handling;graphics processing units;learning (artificial intelligence);parallel processing;recurrent neural nets;LSTM recurrent neural network;batch bucketing;graphical processing units;multiGPU data parallelization;online handwriting recognition task;recurrent neural network training;sequence bucketing;Acceleration;Computational modeling;Graphics processing units;Handwriting recognition;Recurrent neural networks;Training;Training data;GPU;LSTM;data parallelization;mini-batch;recurrent neural network;sequence bucketing}, 
-	month={Aug},
-	year={2016}}
+    month=aug,
+	year=2016,
+	address={Lviv, Ukraine},
+	}
 
 @inproceedings{PascanuMB13,
 	author    = {Razvan Pascanu and Tomas Mikolov and Yoshua Bengio},
 	title     = {On the difficulty of training recurrent neural networks},
-	booktitle = {Proceedings of the 30th International Conference on Machine Learning,
-	{ICML}},
+	booktitle = ICML,
 	pages     = {1310--1318},
-	month = {June},
-	location = {Atlanta, USA}
-	year      = {2013}
+	month = jun,
+	address = {Atlanta, GA, USA},
+	year      = 2013,
 }
 
-@article{2016arXiv161005256X,
-	author = {{Xiong}, W. and {Droppo}, J. and {Huang}, X. and {Seide}, F. and 
-	{Seltzer}, M. and {Stolcke}, A. and {Yu}, D. and {Zweig}, G.
-	},
+@techreport{2016arXiv161005256X,
+	author = {Xiong, Wayne and Droppo, Jasha and Huang, Xuedong and Seide, Frank and Seltzer, Mike and Stolcke, Andreas and Yu, Dong and Zweig, Geoffrey},
 	title = {Achieving Human Parity in Conversational Speech Recognition},
-	journal = {ArXiv e-prints},
-	volume = {abs/1610.05256},
-	month = oct,
-	year = 2016
+	year = 2017,
+	month = feb,
+	number = {MSR-TR-2016-71},
 }
 
 @inproceedings{CTC,
-	title={Towards End-To-End Speech Recognition with Recurrent Neural Networks.},
+	title={Towards End-To-End Speech Recognition with Recurrent Neural Networks},
 	author={Graves, Alex and Jaitly, Navdeep},
-	booktitle={ICML},
-	volume={14},
+	booktitle=ICML,
 	pages={1764--1772},
-	year={2014}
+	year=2014,
+	aug=jun,
+	address={Beijing, China},
 }
 @article{Hannun2014:deepspeech,
 	title={Deep speech: Scaling up end-to-end speech recognition},
@@ -540,69 +576,65 @@
 	organization={IEEE}
 }
 @inproceedings{Li16,
-	abstract = {{Stochastic gradient descent (SGD) is a popular technique for large-scale optimization problems in machine learning. In order to parallelize SGD, minibatch training needs to be employed to reduce the communication cost. However, an increase in minibatch size typically decreases the rate of convergence. This paper introduces a technique based on approximate optimization of a conservatively regularized objective function within each minibatch. We prove that the convergence rate does not decrease with increasing minibatch size. Experiments demonstrate that with suitable implementations of approximate optimization, the resulting algorithm can outperform standard SGD in many scenarios.}},
+    title = {Efficient Mini-batch Training for Stochastic Optimization},
+	booktitle = {Proceedings of the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
 	address = {New York, NY, USA},
 	author = {Li, Mu and Zhang, Tong and Chen, Yuqiang and Smola, Alexander J.},
-	booktitle = {Proceedings of the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
-	location = {New York, New York, USA},
 	pages = {661--670},
-	priority = {2},
-	publisher = {ACM},
-	year = {2014}
+	year = 2014,
+	month = aug,
 }
 
 @inproceedings{Bengio15,
 	author = {Bengio, Samy and Vinyals, Oriol and Jaitly, Navdeep and Shazeer, Noam},
 	title = {Scheduled Sampling for Sequence Prediction with Recurrent Neural Networks},
-	booktitle = {Proceedings of the 28th International Conference on Neural Information Processing Systems},
-	location = {Montreal, Canada},
+	booktitle = NIPS,
+	address = {Montreal, Canada},
 	pages = {1171--1179},
-	numpages = {9},
-	publisher = {MIT Press},
-	address = {Cambridge, MA, USA},
-	year = {2015}
+	year = 2015,
+	month = dec,
 } 
 
 @INPROCEEDINGS{Laurent16, 
 	author={C. Laurent and G. Pereyra and P. Brakel and Y. Zhang and Y. Bengio}, 
-	booktitle={2016 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, 
+	booktitle=ICASSP, 
 	title={Batch normalized recurrent neural networks},  
 	pages={2657-2661},
-	month={March},
-	year={2016}
+	month=mar,
+	year=2016,
+	address={Shanghai, China},
 }
 
 @INPROCEEDINGS{Doetsch14, 
 	author={P. Doetsch and M. Kozielski and H. Ney}, 
-	booktitle={2014 14th International Conference on Frontiers in Handwriting Recognition}, 
+	booktitle={International Conference on Frontiers in Handwriting Recognition}, 
 	title={Fast and Robust Training of Recurrent Neural Networks for Offline Handwriting Recognition}, 
 	pages={279-284},
-month={Sept},
-year={2014}}
+	month=sep,
+	year=2014,
+	address={Crete, Greece},
+}
 
 @article{Vincent_CSL2016:CHiME4,
   title = "An analysis of environment, microphone and data simulation mismatches in robust speech recognition ",
   author = "Emmanuel Vincent and Shinji Watanabe and Aditya Arie Nugraha and Jon Barker and Ricard Marxer",
   journal = CSL,
-  volume = "In Press, available online",
-  year = "2016",
+  year = 2016,
   issn = "0885-2308",
-  doi = "http://dx.doi.org/10.1016/j.csl.2016.11.005",
-  url = "http://www.sciencedirect.com/science/article/pii/S0885230816301231",
 }
 
 @inproceedings{Barker2015:CHiME3,
-  title="{The third ‘CHiME’speech separation and recognition challenge: Dataset, task and baselines}",
+  title={The third {'CHiME'} speech separation and recognition challenge: Dataset, task and baselines},
   author={Barker, Jon and Marxer, Ricard and Vincent, Emmanuel and Watanabe, Shinji},
   booktitle=ASRU,
   pages={504--511},
-  year={2015},
-  organization={IEEE}
+  year=2015,
+  month=dec,
 }
 
 @InProceedings { menne16:chime4System,
 	author= {Menne, Tobias and Heymann, Jahn and Alexandridis, Anastasios and Irie, Kazuki and Zeyer, Albert and Kitza, Markus and Golik, Pavel and Kulikov, Ilia and Drude, Lukas and Schl{\"u}ter, Ralf and Ney, Hermann and Haeb-Umbach, Reinhold and Mouchtaris, Athanasios},	
-	title= {The RWTH/UPB/FORTH System Combination for the 4th CHiME Challenge Evaluation},	
+	title= {The {RWTH/UPB/FORTH} System Combination for the 4th {CHiME} Challenge Evaluation},	
 	booktitle= {The 4th International Workshop on Speech Processing in Everyday Environments},	
 	pages= {39-44},	
 	address= {San Francisco, CA, USA},	
