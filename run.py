@@ -17,7 +17,7 @@ parser.add_argument('--load-epoch', type=int, default=0,
                     help='load from epoch')
 parser.add_argument('--output-file', type=str, default='out.cache',
                     help='posterior output cache file')
-parser.add_argument('--num-layers', type=int, default=1,
+parser.add_argument('--num-layers', type=int, default=3,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=512,
                     help='hidden layer size')
@@ -30,7 +30,7 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=0.01,
+parser.add_argument('--lr', type=float, default=0.001,
                     help='initial learning rate')
 parser.add_argument('--optimizer', type=str, default='adam',
                     help='the optimizer type')
@@ -50,7 +50,7 @@ parser.add_argument('--disp-batches', type=int, default=50,
 # multiple GPUs.
 parser.add_argument('--stack-rnn', default=False,
                     help='stack fused RNN cells to reduce communication overhead')
-parser.add_argument('--dropout', type=float, default='0.0',
+parser.add_argument('--dropout', type=float, default='0.3',
                     help='dropout probability (1.0 - keep probability)')
 
 parser.add_argument('--sampling', type=str, default=None,
@@ -130,7 +130,7 @@ class UtteranceIter(DataIter):
     self.curr_idx = 0
 
     if isinstance(self.sampling, list):
-      if self.shuffle;
+      if self.shuffle:
         random.shuffle(self.idx) # shuffle bucket index
         for buck in self.data: # shuffle sequence index within bucket
           np.random.shuffle(buck)
@@ -154,14 +154,15 @@ class UtteranceIter(DataIter):
       label = ndarray.swapaxes(label, 1, 0)
       #print "next:", i, j, data.shape,label.shape
 
-      return DataBatch([data], [label], pad=0,
-                       bucket_key=self.sampling[i],
-                       provide_data=[(self.data_name, data.shape)],
-                       provide_label=[(self.label_name, label.shape)])
+      batch = DataBatch([data], [label], pad=0,
+                        bucket_key=self.sampling[i],
+                        provide_data=[(self.data_name, data.shape)],
+                        provide_label=[(self.label_name, label.shape)])
     else:
       assert False
-    self.curr_idx += 1
 
+    self.curr_idx += 1
+    return batch
 
 def read_hdf5(filename, batching='default'):
   h5 = h5py.File(filename, "r")
@@ -229,7 +230,7 @@ class PosteriorExtraction(mx.metric.EvalMetric):
     self.cur_idx = 0
     self.names = names
     
-  def finalize(self)
+  def finalize(self):
     self.file.finalize()
 
   def update(self, labels, preds):
