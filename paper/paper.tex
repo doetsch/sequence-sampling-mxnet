@@ -168,46 +168,41 @@
   We extracted 16-dimensional MFCC vectors from beam-formed versions of the six sub-corpora in the training data corresponding to each channel
   and used them as features for the neural network models \cite{menne16:chime4System}.
   A CART tying was used to cluster the (roughly 120k possible) allophones into 1500 CART labels.
-  We trained a three state HMM without skip transitions in the standard fashion and applied it in a forced alignment mode to the training data
-  in order to obtain a frame-wise labeling of the data.
+  We trained a three state HMM without skip transitions in the standard fashion and applied it in a forced alignment mode to the training data in order to obtain a frame-wise labeling of the data. A three layer 
+  bi-directional LSTM followed a softmax layer was trained to minimize the cross-entropy of the softmax output and the CART label sequence at each frame. Optimization was done with the Adam optimizer and a constant learning rate of 0.01.
+  
+  After training, state posteriors were extracted from the softmax for each observation of the evaluation set. The posteriors were then decoded in the RWTH 
+  speech recognition toolkit RASR \cite{rybach2011:rasr} using the hybrid HMM approach. A 4-gram LM 
+  was used during decoding with a language model scale of 12.
 
   \section{Experiments} \label{sec:experiments}
-   We conducted experiments with different batch construction strategies. The results are reported in \ref{tab:chime:batch}, where the first three rows show results for trivial sequence ordering 
+   In order to provide some perspective on the required context on the CHiME-4 task, 
+   we provide results for experiments on sub-utterance (chunk) in 
+   Table \ref{tab:chime:chunk}. In the first columns we evaluate different sub-sequence lengths, while measuring the utterances that were processed per second, the memory required and the word error rate (WER) on the evaluation set of the CHiME-4 database. We can observe that 
+   while large speed-ups can be obtained when training is done in this fashion, full-utterance context is
+   required for optimal performance.
+   
+   For training on full sequences we conducted experiments with different batch construction strategies.
+   The results are reported in Table \ref{tab:chime:batch}, where the first three rows show results for trivial sequence ordering 
    methods. The last two rows then provide a direct comparison of the bucketing approach as 
-   it is implemented in MXNet and the sinusoidal approach as proposed in this paper.
-    %\begin{table}[tbp]
-    %\centering
-    %\caption{Comparison of runtime and memory requirement for different software packages. The %numbers were averaged over 100 training epochs. 
-    %Note that sharp memory usage estimates for Torch and TensorFlow can not be obtained due to %their 5internal memory management.}
-    %\label{tab:chime:compare}
-    %\begin{tabular}{lrr}
-    %  \hline
-    %  Toolkit                 & Runtime [sec] & Memory [GB] \\
-    %  \hline
-    %  RETURNN   &  140     & 0.6     \\
-    %  \hline
-    %  Theano (in RETURNN)     &  370     & 0.8     \\
-    %  TensorFlow              &  580     & 2.1$^*$     \\
-    %  \hline
-    %\end{tabular}
-    %\end{table}
-
+   it is implemented in MXNet and the alternated sorting approach as proposed in this paper.
+    
 	\begin{table}[tbp]
 		\centering
 		\caption{Training time and recognition performance when training is done 
 		on sub-sequence level. The first column shows the maximal sub-sequence length 
 		after partitioning of the original sequence. The last line shows the results 
 		if no partitioning into sub-sequence is performed. }
-		\label{tab:chime:batch}
+		\label{tab:chime:chunk}
 		\begin{tabular}{lrrr}
 			\hline
-			Chunk size              & Runtime [sec] & Memory [GB] & WER [\%] \\
+			Chunk size              & Utt./sec & Memory [GB] & WER [\%] \\
 			\hline
-			10     					&				&			  &			 \\
-			50  					&				&			  & 		 \\
-			100 					& 				&			  &			 \\
-			500						& 				&			  &			 \\
-			$\max$					&				&			  &			 \\
+			10     					&				 &			   &			 \\
+			50  					&				 &			   &    		 \\
+			100 					& 				 &			   &			 \\
+			500						& 				 &			   &			 \\
+			$\max$					&				 &			   &			 \\
 			\hline
 		\end{tabular}
 	\end{table}
@@ -219,24 +214,27 @@
 		\label{tab:chime:batch}
 		\begin{tabular}{lrrr}
 			\hline
-			Approach                & Runtime [sec] & Memory [GB] & WER [\%] \\
+			Approach                & Utt./sec & Memory [GB] & WER [\%]          \\
 			\hline
-			Static					&				&			  &			 \\
-			Random 					&				&			  & 		 \\
-			Sorted					& 				&			  &			 \\
+			Random 					&	       & 			 & 6.8		 \\
+			Sorted					& 		   &			 & 7.4		 \\
 			\hline
-			Bucketing				&				&			  &			 \\
-			Sinusoidal  			&				&			  &			 \\
+			Bucketing				&		   &			 & 7.2		 \\
+			Proposed (4 bins)	&		   &			 & 7.0		 \\
+			Proposed (64 bins)	&		   &			 & 7.0		 \\
+			Proposed (256 bins)	&		   &			 & 6.9		 \\
 			\hline
 		\end{tabular}
 	\end{table}
 
   As expected, sorting the entire training set by sequence length reduces the required time 
-  per epoch to a minimum. 
+  per epoch to a minimum, while the best overall performance is obtained when sequences are shuffled randomly.
+  
       
   \section{Conclusions}
     In this work we presented a novel strategy to construct sequence-level batches for recurrent 
-    neural network training. Most system rely on a bucketing approach by clustering sequences of similar length into bins and to create batches from each bin individually. We showed that we can achieve a better runtime performance using a simpler batch design.
+    neural network training. Most frameworks rely on a bucketing approach by clustering sequences of similar length into bins and to create batches from each bin individually. We showed that we can achieve a better runtime performance using a simpler batch design, by partitioning a shuffled sequence order and to sort the partitions in alternating order. The method was evaluated on the ChiME-4 noisy speech recognition task and 
+    compared to the bucketing approach of MXNet.
 
    \section{Acknowledgements}
  
