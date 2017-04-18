@@ -1,0 +1,138 @@
+% Copyright 2008 by 
+% Philippe Dreuw <dreuw@cs.rwth-aachen.de> and 
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License and/or
+% 2. under the GNU Public License.
+%
+%
+% ChangeLog:
+%
+% 1.00 - first papertweaker release
+%
+\def\papertweaker@version{1.00}
+\def\papertweaker@date{2008/03/28}
+\def\papertweaker@msg{papertweaker: scientific paper tweaker}
+\typeout{Package: \papertweaker@date. v.\papertweaker@version. \papertweaker@msg} 
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{papertweaker}[\papertweaker@date. v.\papertweaker@version. \papertweaker@msg]
+\RequirePackage{xkeyval}[2006/11/18]
+\RequirePackage{ifthen}
+\RequirePackage{xspace}
+\RequirePackage[debug]{fp}
+\RequirePackage{xcolor}
+
+%%% define some switches
+\newif\if@debug
+\newif\if@anon
+
+%%% indent first line after section?
+\DeclareOptionX{firstindent}[false]{
+  \typeout{papertweaker: checking section firstline  indent.}
+  \XKV@cc*+[\val\nr]{#1}{true,false}{%
+    \typeout{papertweaker the input \val\ \nr\ was correct, we proceed.}
+    \ifcase\nr\relax
+    %true
+    \let\@afterindentfalse\@afterindenttrue
+    \@afterindenttrue   
+    \or
+    %false
+    \let\@afterindenttrue\@afterindentfalse
+    \@afterindentfalse
+    \fi    
+  }{%
+    \PackageWarning{papertweaker}{the input \val\ was incorrect and was ignored.}
+  }%
+  \typeout{papertweaker: finished firstindent input check.}
+}
+
+%%% anonymous submission?
+\DeclareOptionX{anonymous}[false]{
+  \typeout{papertweaker: checking anonymous submission.}
+  \XKV@cc*+[\val\nr]{#1}{true,false}{%
+    \typeout{papertweaker the input \val\ \nr\ was correct, we proceed.}
+    \ifcase\nr\relax
+    %true
+    \let\@anonfalse\@anontrue
+    \@anontrue   
+    \or
+    %false
+    \let\@anontrue\@anonfalse
+    \@anonfalse
+    \fi    
+  }{%
+    \PackageWarning{papertweaker}{the input \val\ was incorrect and was ignored.}
+  }%
+  \typeout{papertweaker: finished anonymous check.}
+}
+
+\DeclareOptionX{shrinker}[0ex]{%%% spacings after/between sections, figures, tables, caption, ...
+  \edef\myshrinkscale{#1}\typeout{papertweaker: myshrinkscale=\myshrinkscale}
+  \newcommand*{\shrinker}{\vspace{\myshrinkscale}}
+}
+\DeclareOptionX{baselinestretch}[1.0]{%%% baseline stretching
+  \renewcommand{\baselinestretch}{#1}\normalsize
+}
+
+%\ExecuteOptionsX{firstindent=false}   % here should be no default options, it's just a tweaker tool
+\ProcessOptionsX\relax
+
+%%% some helper macros
+\newcommand*{\anon}[1]{\if@anon [anonymous paper submission]\else #1\fi}
+\newcommand*{\todo}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{red}{\textbf{TODO: #2}}}{\textcolor{red}{\textbf{TODO (by #1): #2}}}}
+\newcommand*{\running}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{orange}{\textbf{RUN: #2}}}{\textcolor{orange}{\textbf{RUN (by #1): #2}}}}
+\newcommand*{\done}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{green}{\textbf{DONE: #2}}}{\textcolor{green}{\textbf{DONE (by #1): #2}}}}
+\newcommand*{\tocite}[1]{\textcolor{cyan}{\textbf{TOCITE: #1}}}
+\newcommand*{\new}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{magenta}{\textbf{NEW: #2}}}{\textcolor{magenta}{\textbf{NEW (by #1): #2}}}}
+\newcommand*{\review}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{blue}{\textbf{REVIEWER: #2}}}{\textcolor{blue}{\textbf{REVIEWER (by #1): #2}}}}
+%\newcommand*{\note}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{purple}{\textbf{NOTE: #2}}}{\textcolor{purple}{\textbf{NOTE (by #1): #2}}}}
+\newcommand*{\comment}[2][]{\ifthenelse{\equal{#1}{}}{\textcolor{green}{\textbf{COMMENT: #2}}}{\textcolor{green}{\textbf{COMMENT (by #1): #2}}}}
+
+
+
+%%% abbreviations
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+\def\eg{{e.g}\onedot} \def\Eg{{E.g}\onedot}
+\def\ie{{i.e}\onedot} \def\Ie{{I.e}\onedot}
+\def\cf{{cf}\onedot} \def\Cf{{Cf}\onedot}
+\def\etc{{etc}\onedot}
+\def\vs{{vs}\onedot}
+\def\wrt{w.r.t\onedot}
+\def\dof{d.o.f\onedot}
+\def\etal{{et al}\onedot}
+
+
+%%% evil table-column formatting functions (can also be used inside text)
+
+
+%%% round up to 
+%%% 
+\def\roundposition{1} 
+\def\rdm#1#2 {\message{Processing float ``#1'' ``#2''}%
+  \ifx\ignorespaces#1\edef\rounded{0}\FPeval\rounded{round(#2*100,\roundposition)}\rounded% w/ \ignorespaces inside a table
+  \else%
+  \edef\rounded{0}\FPeval\rounded{round(#1*100,\roundposition)}\rounded\xspace% w/o \ignorespaces inside normal text
+  \fi%
+}
+
+%%% convert from WER to WRR
+%%% e.g 
+%%% \begin{tabular}{c |>{\wrr}c<{ }}
+%%% WER & WRR \\
+%%% 
+\def\wrr#1#2 {\message{Processing float ``#1'' ``#2''}%
+  \ifx\ignorespaces#1\edef\rounded{0}\FPeval\rounded{round(100-#2,\roundposition)}\rounded% w/ \ignorespaces inside a table
+  \else%
+  \edef\rounded{0}\FPeval\rounded{round(100-#1,\roundposition)}\rounded\xspace% w/o \ignorespaces inside normal text
+  \fi%
+}
+
+\def\wer#1#2 {\message{Processing float ``#1'' ``#2''}%
+  \ifx\ignorespaces#1\edef\rounded{0}\FPeval\rounded{round(#2,\roundposition)}\rounded% w/ \ignorespaces inside a table
+  \else%
+  \edef\rounded{0}\FPeval\rounded{round(#1,\roundposition)}\rounded\xspace% w/o \ignorespaces inside normal text
+  \fi%
+}

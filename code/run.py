@@ -30,15 +30,15 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=1.0,
+parser.add_argument('--lr', type=float, default=0.1,
                     help='initial learning rate')
-parser.add_argument('--optimizer', type=str, default='adadelta',
+parser.add_argument('--optimizer', type=str, default='sgd',
                     help='the optimizer type')
-parser.add_argument('--mom', type=float, default=0.0,
+parser.add_argument('--mom', type=float, default=0.9,
                     help='momentum for sgd')
 parser.add_argument('--wd', type=float, default=0.00001,
                     help='weight decay for sgd')
-parser.add_argument('--batch-size', type=int, default=5,
+parser.add_argument('--batch-size', type=int, default=25,
                     help='the batch size.')
 parser.add_argument('--disp-batches', type=int, default=100,
                     help='show progress for every n batches')
@@ -93,7 +93,7 @@ class UtteranceIter(DataIter):
       self.labels = [[] for _ in sampling]
       for utt, lab in zip(utterances, states):
         buck = bisect.bisect_left(sampling, len(utt))
-        xin = np.full((sampling[buck],len(utt[0])), 0, dtype='float32')
+        xin = np.full((sampling[buck],len(utt[0])), -1, dtype='float32')
         n_in = len(utt[0])
         xin[:len(utt)] = utt
         yout = np.full((sampling[buck],), -1, dtype='int32')
@@ -150,9 +150,9 @@ class UtteranceIter(DataIter):
       i, j = self.idx[self.curr_idx]
 
       data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size]
+      label = self.ndlabel[i][j:j + self.batch_size].T
       data = ndarray.swapaxes(data, 1, 0) # TBD
-      label = ndarray.swapaxes(label, 1, 0)
+      #label = ndarray.swapaxes(label, 1, 0)
 
       batch = DataBatch([data], [label], pad=0,
                         bucket_key=self.sampling[i],
@@ -214,11 +214,12 @@ class FrameError(mx.metric.EvalMetric):
     for label, pred_label in zip(labels, preds):
       if pred_label.shape != label.shape:
         pred_label = ndarray.argmax_channel(pred_label)
-      pred_label = pred_label.asnumpy().astype('int32')
+      pred_label = pred_label.asnumpy().astype('int32').flatten()
       label = label.asnumpy().astype('int32').flatten()
 
-      self.sum_metric += (pred_label.flat != label.flat).sum()
-      self.num_inst += len(pred_label.flat)
+      idx = np.where(label != -1)
+      self.sum_metric += (pred_label[idx] != label[idx]).sum()
+      self.num_inst += len(pred_label[idx])
 
 class PosteriorExtraction(mx.metric.EvalMetric):
   """write frame-wise posteriors to an HDF5 output file."""
@@ -271,7 +272,7 @@ def train(args):
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
-        pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
+        pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax', ignore_label=-1, multi_output=True, use_ignore=True)
 
         return pred, ('data',), ('labels',)
 
@@ -339,7 +340,7 @@ def test(args):
         label = mx.sym.Variable('labels')
         output, _ = stack.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
-        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
+        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out+1, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
         pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
