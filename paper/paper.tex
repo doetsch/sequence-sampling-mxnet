@@ -132,10 +132,21 @@
   	MXNet \cite{mxnet} implement a bucketing approach based on the length of the sequence. In  \cite{Khomenko06} the authors extend this idea by selecting optimal sequences within each bucket using a dynamic programming technique.
 
   \section{Bucketing in MXNet} \label{sec:bucketing}
-  Bucketing, borrowed from TensorFlow's sequence training example, is a simple solution. Instead of unrolling the network to the maximum possible sequence, we unroll multiple instances of different lengths (e.g., length 5, 10, 20, 30). During training, we use the most appropriate unrolled model for each mini-batch of data with different sequence length. For RNNs, although those models have different architecture, the parameters are shared in time. So although models in different buckets are selected to train in different mini-batches, essentially the same set of parameters are being optimized. MXNet reuses the internal memory buffers among all executors.
-
+  Borrowed from TensorFlow's sequence training example, MXNet implements bucketing by 
+  clustering sequences into bins depending on their length. The size of each bin, i.e.~ the span of 
+  sequence lengths associated with this bin, has to be specified by the user and optimal values 
+  depend on the ASR task. The sampling process can be done in logarithmic time, since for each sequence length in the training set a binary search over the bins can be performed. 
+    
+  In each iteration of the mini-batch training a bucket is then selected randomly. Within the selected bucket a random span of sequences is chosen to be used as data batch. Note that this random shuffling only ensures a large inter-batch variance w.r.t.~the sequence length, while the variance 
+  within each batch is small.
+  
+  Bucketing is especially suited if the RNN model itself is not able to handle arbitrary 
+  long sequences but instead requires to store an unrolled version of the network for every possible 
+  length. In those cases bucketing allows the framework to assign each batch to the shortest possible 
+  unrolled network, while still optimizing the same shared weights.
 
   \section{Proposed Approach} \label{sec:approach}
+ 
   At each iteration:
   \begin{enumerate}
   	\item shuffle training data by sequence length
@@ -149,8 +160,10 @@
 
   \section{Experimental Setup} \label{sec:setup}
   The 4th CHiME Speech Separation and Recognition Challenge
-  \cite{Vincent_CSL2016:CHiME4} revisits the CHiME-3 dataset \cite{Barker2015:CHiME3},
-  which consists of utterances spoken by speakers in challenging noisy environments recorded using a 6-channel microphone array on a tablet.
+  \cite{Vincent_CSL2016:CHiME4} consists of noisy utterances spoken by speakers in challenging 
+  environments. Recorded was done using a 6-channel microphone array on a tablet. The dataset revisits 
+  the CHiME-3 corpus that was published one year before the challenge took place \cite{Barker2015:CHiME3}.
+  
   We extracted 16-dimensional MFCC vectors from beam-formed versions of the six sub-corpora in the training data corresponding to each channel
   and used them as features for the neural network models \cite{menne16:chime4System}.
   A CART tying was used to cluster the (roughly 120k possible) allophones into 1500 CART labels.
@@ -160,7 +173,7 @@
   \section{Experiments} \label{sec:experiments}
    We conducted experiments with different batch construction strategies. The results are reported in \ref{tab:chime:batch}, where the first three rows show results for trivial sequence ordering 
    methods. The last two rows then provide a direct comparison of the bucketing approach as 
-   it is implemented in MXNet and the Laplace approach as proposed in this paper.
+   it is implemented in MXNet and the sinusoidal approach as proposed in this paper.
     %\begin{table}[tbp]
     %\centering
     %\caption{Comparison of runtime and memory requirement for different software packages. The %numbers were averaged over 100 training epochs. 
@@ -212,7 +225,7 @@
 			Sorted					& 				&			  &			 \\
 			\hline
 			Bucketing				&				&			  &			 \\
-			Laplace					&				&			  &			 \\
+			Sinusoidal  			&				&			  &			 \\
 			\hline
 		\end{tabular}
 	\end{table}
