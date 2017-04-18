@@ -15,6 +15,8 @@ parser.add_argument('--model-prefix', type=str, default=None,
                     help='path to save/load model')
 parser.add_argument('--load-epoch', type=int, default=0,
                     help='load from epoch')
+parser.add_argument('--output-file', type=str, default='out.cache',
+                    help='posterior output cache file')
 parser.add_argument('--num-layers', type=int, default=1,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=512,
@@ -75,7 +77,7 @@ class UtteranceIter(DataIter):
       and 'TN' means (length, batch_size).
   """
 
-  def __init__(self, utterances, states, batch_size, sampling, data_name='data', label_name='labels'):
+  def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
     if not sampling:
       sampling = [i for i, j in enumerate([len(x) for x in utterances])][500::500]
@@ -115,6 +117,8 @@ class UtteranceIter(DataIter):
     self.label_name = label_name
     self.sampling = sampling
     self.default_key = max(sampling)
+    self.names = names
+    self.shuffle = shuffle
 
     # we assume time major layout
     self.provide_data = [(self.data_name, (self.default_key, batch_size, self.data[-1].shape[2]))]
@@ -126,9 +130,10 @@ class UtteranceIter(DataIter):
     self.curr_idx = 0
 
     if isinstance(self.sampling, list):
-      random.shuffle(self.idx) # shuffle bucket index
-      for buck in self.data: # shuffle sequence index within bucket
-        np.random.shuffle(buck)
+      if self.shuffle;
+        random.shuffle(self.idx) # shuffle bucket index
+        for buck in self.data: # shuffle sequence index within bucket
+          np.random.shuffle(buck)
 
       self.nddata = []
       self.ndlabel = []
@@ -164,7 +169,7 @@ def read_hdf5(filename, batching='default'):
   xin = h5['inputs'][...]
   yin = h5['targets/data']['classes'][...]
   n_out = h5['targets/size'].attrs['classes']
-
+  
   utterances = []
   states = []
   offset = 0
@@ -172,14 +177,15 @@ def read_hdf5(filename, batching='default'):
     utterances.append(xin[offset:offset + length])
     states.append(yin[offset:offset + length])
     offset += length
-
+  
+  names = h5['seqTags'][...]
   h5.close()
-  return utterances, states, n_out
+  return names, utterances, states, n_out
 
 
 def get_data():
-    train_x, train_y, n_out = read_hdf5('./data/train.0001')
-    valid_x, valid_y, _ = read_hdf5('./data/train.0002')
+    train_n, train_x, train_y, n_out = read_hdf5('./data/train.0001')
+    valid_n, valid_x, valid_y, _ = read_hdf5('./data/train.0002')
 
     sampling = args.sampling
     if sampling is not None:
@@ -193,9 +199,44 @@ def get_data():
         except ValueError:
           pass
 
-    data_train  = UtteranceIter(train_x, train_y, args.batch_size, sampling=sampling)
-    data_val    = UtteranceIter(valid_x, valid_y, args.batch_size, sampling=sampling)
+    data_train  = UtteranceIter(train_x, train_y, train_n, args.batch_size, sampling=sampling)
+    data_val    = UtteranceIter(valid_x, valid_y, valid_n, args.batch_size, sampling=sampling, shuffle=False)
     return data_train, data_val, n_out
+
+class FrameError(mx.metric.EvalMetric):
+  """Calculate frame error rate."""
+
+  def __init__(self):
+    super(FrameError, self).__init__('frame-error')
+
+  def update(self, labels, preds):
+    for label, pred_label in zip(labels, preds):
+      if pred_label.shape != label.shape:
+        pred_label = ndarray.argmax_channel(pred_label)
+      pred_label = pred_label.asnumpy().astype('int32')
+      label = label.asnumpy().astype('int32').flatten()
+
+      self.sum_metric += (pred_label.flat != label.flat).sum()
+      self.num_inst += len(pred_label.flat)
+
+class PosteriorExtraction(mx.metric.EvalMetric):
+  """write frame-wise posteriors to an HDF5 output file."""
+
+  def __init__(self, filename, names):
+    super(PosteriorExtraction, self).__init__('frame-error')
+    import SprintCache
+    self.file = SprintCache.FileArchive(filename)
+    self.cur_idx = 0
+    self.names = names
+    
+  def finalize(self)
+    self.file.finalize()
+
+  def update(self, labels, preds):
+    for label, pred_label in zip(labels, preds):
+      times = zip(range(0, obj['source']['inputs']['lengths'][i]), range(1, obj['source']['inputs']['lengths'][i] + 1))
+      pred_label = np.log(pred_label.asnumpy().astype('float32'))
+      self.file.addFeatureCache(self.names[self.cur_idx],pred_label,times)
 
 def train(args):
     data_train, data_val, n_out = get_data()
@@ -225,11 +266,8 @@ def train(args):
         #label = mx.sym.swapaxes(label, dim1=0, dim2=1)
 
         output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
-        #data = mx.sym.Reshape(data, shape=(-1, 16))
-        #print data.infer_shape()
         pred = mx.sym.FullyConnected(data=data, num_hidden=n_out, name='fakeout')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
-        #pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
@@ -262,22 +300,6 @@ def train(args):
     if args.optimizer not in ['adadelta', 'adagrad', 'adam', 'rmsprop']:
         opt_params['momentum'] = args.mom
 
-    class FrameError(mx.metric.EvalMetric):
-      """Calculate frame error rate."""
-
-      def __init__(self):
-        super(FrameError, self).__init__('frame-error')
-
-      def update(self, labels, preds):
-        for label, pred_label in zip(labels, preds):
-          if pred_label.shape != label.shape:
-            pred_label = ndarray.argmax_channel(pred_label)
-          pred_label = pred_label.asnumpy().astype('int32')
-          label = label.asnumpy().astype('int32').flatten()
-
-          self.sum_metric += (pred_label.flat != label.flat).sum()
-          self.num_inst += len(pred_label.flat)
-
     model.fit(
         train_data          = data_train,
         eval_data           = data_val,
@@ -296,7 +318,7 @@ def train(args):
 
 def test(args):
     assert args.model_prefix, "Must specifiy path to load from"
-    _, data_val, vocab = get_data('NT')
+    _, data_val, n_out = get_data()
 
     if not args.stack_rnn:
         stack = mx.rnn.FusedRNNCell(args.num_hidden, num_layers=args.num_layers,
@@ -314,21 +336,16 @@ def test(args):
 
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
-        label = mx.sym.Variable('softmax_label')
-        embed = mx.sym.Embedding(data=data, input_dim=len(vocab),
-                                 output_dim=args.num_embed, name='embed')
-
-        stack.reset()
-        outputs, states = stack.unroll(seq_len, inputs=embed, merge_outputs=True)
-
-        pred = mx.sym.Reshape(outputs,
-                shape=(-1, args.num_hidden*(1+args.bidirectional)))
-        pred = mx.sym.FullyConnected(data=pred, num_hidden=len(vocab), name='pred')
+        label = mx.sym.Variable('labels')
+        output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
+        pred = mx.sym.FullyConnected(data=data, num_hidden=n_out, name='fakeout')
+        pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
+        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
         pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
 
-        return pred, ('data',), ('softmax_label',)
+        return pred, ('data',), ('labels',)
 
     if args.gpus:
         contexts = [mx.gpu(int(i)) for i in args.gpus.split(',')]
@@ -344,9 +361,9 @@ def test(args):
     # note here we load using SequentialRNNCell instead of FusedRNNCell.
     _, arg_params, aux_params = mx.rnn.load_rnn_checkpoint(stack, args.model_prefix, args.load_epoch)
     model.set_params(arg_params, aux_params)
-
-    model.score(data_val, mx.metric.Perplexity(invalid_label),
-                batch_end_callback=mx.callback.Speedometer(args.batch_size, 5))
+    extr = PosteriorExtraction(args.output_file, data_val.names)
+    model.score(data_val, extr, batch_end_callback=mx.callback.Speedometer(args.batch_size, 5))
+    extr.finalize()
 
 if __name__ == '__main__':
     import logging
