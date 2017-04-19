@@ -147,17 +147,31 @@
   unrolled network, while still optimizing the same shared weights.
 
   \section{Proposed Approach} \label{sec:approach}
+  
+  In order to improve the intra-batch variability we propose a stochastic bucketing process. At the beginning
+  of each epoch the utterances are arranged randomly and then partitioned into bins of equal size. Each bin
+  is then sorted in alternating directions such that two consecutive bins are sorted in reverse order to each 
+  other. Finally, the constructed ordering is partitioned into batched. The overall algorithm can be summarized as: \\[1ex]
  
-  At each iteration:
-  \begin{enumerate}
-  	\item shuffle training data by sequence length
-  	\item partition resulting sequence order into $N$ partitions
-  	\item sort each bin $n$:
-  	\begin{itemize}
-  		\item in increasing order if $n$ is odd
-  		\item in decreasing order if $n$ is even
-  	\end{itemize}
-  \end{enumerate}
+ \begin{minipage}{\textwidth}
+ 	For each epoch
+ 	\begin{enumerate}
+ 		\item shuffle training data by sequence length
+ 		\item partition resulting sequence order into $N$ partitions
+ 		\item sort each bin $n$:
+ 		\begin{itemize}
+ 			\item in increasing order if $n$ is odd
+ 			\item in decreasing order if $n$ is even
+ 		\end{itemize}
+ 		\item partition into batches of desired size \\[1ex]
+ 	\end{enumerate}
+ \end{minipage}
+
+ Due to the initial shuffling and subsequent partitioning the probability for two sequences of any length being 
+ put into the same bin in $\frac{1}{N*(N-1)}$, so by increasing the number of bins, the variability within a 
+ partition decreases quadratically while the variability among different partitions increases. The alternated
+ sorting approach ensures that utterances at the boundaries of two consecutive bins are of similar length such 
+ that the final partitioning into batches requires minimal zero padding.
 
   \section{Experimental Setup} \label{sec:setup}
   The 4th CHiME Speech Separation and Recognition Challenge
@@ -165,10 +179,10 @@
   environments. Recorded was done using a 6-channel microphone array on a tablet. The dataset revisits 
   the CHiME-3 corpus that was published one year before the challenge took place \cite{Barker2015:CHiME3}.
   
-  We extracted 16-dimensional MFCC vectors from beam-formed versions of the six sub-corpora in the training data corresponding to each channel
-  and used them as features for the neural network models \cite{menne16:chime4System}.
-  A CART tying was used to cluster the (roughly 120k possible) allophones into 1500 CART labels.
-  We trained a three state HMM without skip transitions in the standard fashion and applied it in a forced alignment mode to the training data in order to obtain a frame-wise labeling of the data. A three layer 
+  We extracted 16-dimensional MFCC vectors as in \cite{menne16:chime4System} from the six sub-corpora
+  and used them as features for the neural network models. The allophones of the lexicon were clustered into 
+  1500 state labels using a classification and regression tree (CART).
+  We trained a three state HMM without skip transitions applied it in a forced alignment mode to the training data in order to obtain a frame-wise labeling. A three layer 
   bi-directional LSTM followed a softmax layer was trained to minimize the cross-entropy of the softmax output and the CART label sequence at each frame. Optimization was done with the Adam optimizer and a constant learning rate of 0.01.
   
   After training, state posteriors were extracted from the softmax for each observation of the evaluation set. The posteriors were then decoded in the RWTH 
@@ -220,9 +234,9 @@
 			Sorted					& 		   &			 & 7.4		 \\
 			\hline
 			Bucketing				&		   &			 & 7.2		 \\
-			Proposed (4 bins)	&		   &			 & 7.0		 \\
-			Proposed (64 bins)	&		   &			 & 7.0		 \\
-			Proposed (256 bins)	&		   &			 & 6.9		 \\
+			Proposed (4 bins)	    &		   &			 & 7.0		 \\
+			Proposed (64 bins)	    &		   &			 & 7.0		 \\
+			Proposed (256 bins)	    &		   &			 & 6.9		 \\
 			\hline
 		\end{tabular}
 	\end{table}
