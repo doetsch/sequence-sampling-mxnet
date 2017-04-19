@@ -33,7 +33,7 @@
 
 
 \title{A comparative study of batch construction strategies \\
-	 for recurrent neural networks}
+	 for recurrent neural networks in MXNet}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% If multiple authors, uncomment and edit the lines shown below.       %%
@@ -224,19 +224,19 @@
 	\begin{table}[tbp]
 		\centering
 		\caption{Training time and recognition performance when training is done 
-		on sub-sequence level. The first column shows the maximal sub-sequence length 
+		on sub-utterances level. The first column shows the maximal sub-utterance length 
 		after partitioning of the original sequence. The last line shows the results 
-		if no partitioning into sub-sequence is performed. }
+		if no partitioning into sub-utterances is performed. }
 		\label{tab:chime:chunk}
 		\begin{tabular}{lrrr}
 			\hline
 			Chunk size              & Utt./sec & Memory [GB] & WER [\%] \\
 			\hline
-			10     					&	36.7   & 1.6         &			 \\
-			50  					&	31.1   & 1.6		 &    		 \\
-			100 					& 	29.6   & 1.6		 &			 \\
-			500						& 	17.3   & 1.6         &			 \\
-			$\max$					&	7.0	   & 5.4         &	8.9		 \\
+			10     					&	36.7   & 1.6         &	21.3     \\
+			50  					&	31.1   & 1.6		 &  10.1     \\
+			100 					& 	29.6   & 1.6		 &	9.2      \\
+			500						& 	17.3   & 1.6         &	9.0      \\
+			$\max$					&	7.0	   & 5.4         &	8.9      \\
 			\hline
 		\end{tabular}
 	\end{table}
@@ -253,7 +253,7 @@
 			Random 					& $\sim$ 7.0     & $\sim$ 5.4		 & $\sim$ 8.9		 \\
 			Sorted					& 10.2    &	4.2 & 10.2		 \\
 			\hline
-			Bucketing				& 9.5     &	6.3		 & 9.6		 \\
+			Bucketing (MXNet)		& 9.5     &	6.3		 & 9.6		 \\
 			Proposed (8 bins)	    & 10.1	   & 4.8     & 9.9		 \\
 			Proposed (64 bins)	    & 10.0     & 5.3     & 9.5		 \\
 			Proposed (256 bins)	    & 8.8	   & 6.0     & 9.1		 \\
