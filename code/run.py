@@ -30,7 +30,7 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=0.0001,
+parser.add_argument('--lr', type=float, default=0.001,
                     help='initial learning rate')
 parser.add_argument('--optimizer', type=str, default='adam',
                     help='the optimizer type')
@@ -80,11 +80,8 @@ class UtteranceIter(DataIter):
   def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
     if not sampling:
-      minpad = 64
-      #sampling = [i for i, j in enumerate(np.bincount([len(s) for s in utterances]))]#[j for i, j in enumerate(set([len(x) for x in utterances]))] #[500::500]
+      minpad = 100
       sampling = range(minpad,max([len(s) for s in utterances]),minpad)
-    print sampling
-    #assert False
 
     self.idx = []
     if isinstance(sampling, list):
