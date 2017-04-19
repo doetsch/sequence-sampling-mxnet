@@ -30,7 +30,7 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=0.01,
+parser.add_argument('--lr', type=float, default=0.0001,
                     help='initial learning rate')
 parser.add_argument('--optimizer', type=str, default='adam',
                     help='the optimizer type')
@@ -80,7 +80,7 @@ class UtteranceIter(DataIter):
   def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
     if not sampling:
-      minpad = 100
+      minpad = 64
       #sampling = [i for i, j in enumerate(np.bincount([len(s) for s in utterances]))]#[j for i, j in enumerate(set([len(x) for x in utterances]))] #[500::500]
       sampling = range(minpad,max([len(s) for s in utterances]),minpad)
     print sampling
@@ -100,7 +100,7 @@ class UtteranceIter(DataIter):
         xin = np.full((sampling[buck],len(utt[0])), -1, dtype='float32')
         n_in = len(utt[0])
         xin[:len(utt)] = utt
-        yout = np.full((sampling[buck],), -1, dtype='int32')
+        yout = np.full((sampling[buck],), -1, dtype='float32')
         yout[:len(utt)] = lab
         self.data[buck].append(xin)
         self.labels[buck].append(yout)
@@ -111,7 +111,7 @@ class UtteranceIter(DataIter):
       raise NotImplementedError('sampling %s not supported' % str(sampling))
 
     self.data = [np.asarray(i, dtype='float32') for i in self.data] # BTD
-    self.labels = [np.asarray(i, dtype='int32') for i in self.labels] # BT
+    self.labels = [np.asarray(i, dtype='float32') for i in self.labels] # BT
     self.curr_idx = 0
 
     self.batch_size = batch_size
@@ -137,8 +137,11 @@ class UtteranceIter(DataIter):
     if isinstance(self.sampling, list):
       if self.shuffle:
         random.shuffle(self.idx) # shuffle bucket index
-        for buck in self.data: # shuffle sequence index within bucket
-          np.random.shuffle(buck)
+        for buck_utt, buck_lab in zip(self.data,self.labels): # shuffle sequence index within bucket
+          rng_state = np.random.get_state()
+          np.random.shuffle(buck_utt)
+          np.random.set_state(rng_state)
+          np.random.shuffle(buck_lab)
 
       self.nddata = []
       self.ndlabel = []
