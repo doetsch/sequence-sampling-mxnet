@@ -75,7 +75,7 @@
   	 In this work we compare different batch construction methods for mini-batch training
   	 of recurrent neural networks. While popular implementations like TensorFlow and MXNet suggest 
   	 a bucketing approach to improve the parallelization capabilities of the recurrent training process, 
-  	 we propose a simple ordering strategy that arranges in a stochastic alternating sorted way. We compare our method to sequence bucketing as well as various other
+  	 we propose a simple ordering strategy that arranges the training sequences in a stochastic alternatingly sorted way. We compare our method to sequence bucketing as well as various other
   	 batch construction strategies on the CHiME-4 noisy speech recognition corpus. The experiments
   	 show that our alternated sorting approach is able to compete both in training time and recognition performance while being conceptually simpler to implement. 
   \end{abstract}
@@ -92,15 +92,15 @@
   	previously trained system, sequence-level criteria that optimize the acoustic model and the alignment model jointly
   	are becoming increasingly popular. As an example, the connectionist temporal classification (CTC) \cite{CTC}
   	enables fully integrated training of acoustic models without assuming a frame-level alignment to be given. Sequence-level
-  	criteria however require to train on full utterances, where it is possible to train frame-wise labeled systems
+  	criteria however require to train on full utterances, while it is possible to train frame-wise labeled systems
   	on sub-utterances of any resolution.
   	
     Training of recurrent neural networks for large vocabulary continuous speech recognition (LVCSR)
     tasks is computationally very expensive and the sequential nature of recurrent process prohibits to
     parallelize the training over input frames. A robust optimization requires to work on large batches of utterances
     and training time as well as recognition performance can vary strongly depending on the choice of how
-    batches were put together. The main reason is that combining utterances of different length into the same batch requires 
-    to extend the length of each utterance to the longest utterance within the batch, usually by appending zeros. These zero frames 
+    batches were put together. The main reason is that combining utterances of different lengths in a mini-batch requires 
+    to extend the length of each utterance to that of the longest utterance within the batch, usually by appending zeros. These zero frames 
     are ignored later on when gradients are computed but the forward-propagation of zeros through the RNN is a waste of computing power.
     
     A straight-forward strategy to minimize zero padding is to sort the utterances by length and to partition them into
@@ -109,7 +109,7 @@
     One way to overcome this limitation was proposed within TensorFlow and is also used as recommended 
     strategy in MXNet. The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
     a range of utterance lengths and each training sample is assigned to the bucket that corresponds to its length.
-    Afterwards a batch is constructed from a randomly chosen bucket by selecting all or some sequences from it.
+    Afterwards a batch is constructed by drawing sequences from a randomly chosen bucket.
     The concept somehow mitigates the issue of zero padding if suitable length ranges can be defined, while still allowing for 
     some level of randomness at least when sequences are selected within a bucket. However, buckets have to be made very large 
     in order to ensure a sufficiently large variability within batches. On the other hand, making buckets too large will 
@@ -119,7 +119,7 @@
     In this work we propose a simple batch construction strategy that is easier to parametrize and
     implement. The method 
     produces batches with large variability of sequences while at the same time reducing irrelevant computation to a minimum.
-    The following sections we are going to give an overview over current batch construction strategies and compare them 
+    In the following sections we are going to give an overview over current batch construction strategies and compare them 
     w.r.t.~training time and variability. We will then derive our proposed method and discuss its properties on a theoretical
     level, followed by an empirical evaluation on the CHiME-4 noisy speech recognition task. 
     %All experiments were implemented 
@@ -128,7 +128,7 @@
   \section{Related Work} \label{sec:related}
   	While mini-batch training was studied extensively for feed-forward networks \cite{Li16}, authors rarely reveal the batch construction strategy they used during training when 
   	RNN experiments are reported. This is because the systems are either trained in a frame-wise
-  	fashion ~\cite{2016arXiv161005256X} or because the analysis uses sequences of very similar length as in \cite{PascanuMB13}. We studied in an earlier work \cite{Doetsch14} how in those cases training on sub-sequences can lead to significant faster and often also more robust training. 
+  	fashion~\cite{2016arXiv161005256X} or because the analysis uses sequences of very similar length as in \cite{PascanuMB13}. We studied in an earlier work \cite{Doetsch14} how training on sub-sequences in those cases can lead to significantly faster and often also more robust training. 
   	In \cite{Laurent16} the problem of having sequences of largely varying lengths in a batch was identified and the authors
   	suggested to adapt their proposed batch-normalization method to a frame-level normalization, 
   	although a sequence-level normalization sounds theoretically more reasonable. In \cite{Bengio15} a curriculum learning strategy is proposed where sequences follow a specific scheduling in order to reduce overfitting.
@@ -138,12 +138,12 @@
 
   \section{Bucketing in MXNet} \label{sec:bucketing}
   Borrowed from TensorFlow's sequence training example, MXNet implements bucketing by 
-  clustering sequences into bins depending on their length. The size of each bin, i.e.~ the span of 
+  clustering sequences into bins depending on their length. The size of each bin, i.e.~the span of 
   sequence lengths associated with this bin, has to be specified by the user and optimal values 
   depend on the ASR task. The sampling process can be done in logarithmic time, since for each sequence length in the training set a binary search over the bins has to be performed. 
     
   In each iteration of the mini-batch training a bucket is then selected randomly. Within the selected bucket a random span of sequences is chosen to be used as data batch. Note that this random shuffling only ensures a large inter-batch variance w.r.t.~the sequence length, while the variance 
-  within each batch is small.
+  within each batch can be small.
   
   Bucketing is especially useful if the RNN model itself does not support dynamic unrolling and 
   is not able to handle arbitrary 
@@ -154,39 +154,42 @@
   \section{Proposed Approach} \label{sec:approach}
   
   \begin{figure}
-   	\resizebox{0.45\textwidth}{!}{\includegraphics{plot}}
+   	\resizebox{0.48\textwidth}{!}{\includegraphics{plot}}
    	\caption{Resulting sequence ordering for different batch construction strategies. The graphs 
-   	show the length distribution for 1000 randomly selected samples of the CHiME-4 training set. On the 
-   	vertical axis the length is plotted and on the X axis the utterance order. Bucketing was done with a bucket size of 250 and in the proposed approach we used 12 bins.}
+   	show the utternace lengths of 1000 randomly selected samples of the CHiME-4 training set. The 
+   	Y-axis shows the length and the X-axis the utterance index for a given ordering. Bucketing was done with a bucket size of 250 and in the proposed approach we used 12 bins.}
    	  \label{fig:plot}
+   	  \vspace{-5mm}
    \end{figure}
   
   In order to improve the intra-batch variability we propose a stochastic bucketing process. At the beginning
   of each epoch the utterances are arranged randomly and then partitioned into bins of equal size. Each bin
   is then sorted in alternating directions such that two consecutive bins are sorted in reverse order to each 
-  other. Finally, the constructed ordering is partitioned into batched. The overall algorithm can be summarized as: \\[1ex]
+  other. Finally, the constructed ordering is partitioned into batches. The overall algorithm can be summarized as follows: \\[1ex]
  
  \begin{minipage}{\textwidth}
+ 	\vspace{-4mm}
  	For each epoch
  	\begin{enumerate}
- 		\item shuffle training data by sequence length
- 		\item partition resulting sequence order into $N$ partitions
- 		\item sort each bin $n$:
+ 		\item shuffle training data % by sequence length
+ 		\item partition resulting sequence into $N$ bins
+ 		\item sort each bin $n$ by the utterance length:
  		\begin{itemize}
- 			\item in increasing order if $n$ is odd
- 			\item in decreasing order if $n$ is even
+ 			\item in ascending order if $n$ is odd
+ 			\item in descending order if $n$ is even
  		\end{itemize}
- 		\item partition resulting order into batches of desired size \\[1ex]
+ 		\item draw consecutive batches of desired size \\
+ 		from the resulting sequence \\[1ex]
  	\end{enumerate}
  \end{minipage}
 
  Due to the initial shuffling and subsequent partitioning the probability for two sequences of any length being 
- put into the same bin in $\frac{1}{N\cdot(N-1)}$, so by increasing the number of bins, the variability within a 
+ put into the same bin is $\frac{1}{N\cdot(N-1)}$, so by increasing the number of bins, the variability within a 
  partition decreases quadratically while the variability among different partitions increases. The alternated
  sorting approach ensures that utterances at the boundaries of two consecutive bins are of similar length such 
  that the final partitioning into batches requires minimal zero padding.
  
- Figure \ref{fig:plot} shows the length distribution for random and sorted sequence ordering as well as for bucketing in MXNet and the proposed approach. Note that in the case of bucketing batches are put
+ Figure \ref{fig:plot} shows the utterance lengths for random and sorted sequence ordering as well as for bucketing in MXNet and the proposed approach. Note that in the case of bucketing batches are put
  together by randomly choosing one of the buckets first, so the ordering does not directly represent 
  the final set of batches.
 
