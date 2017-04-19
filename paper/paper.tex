@@ -74,8 +74,7 @@
   	 a bucketing approach to improve the parallelization capabilities of the recurrent training process, 
   	 we propose several simple ordering strategies that are able to compete both in training time and 
   	 recognition performance while being conceptually simpler. We compare our method with various other
-  	 batch construction strategies on the CHiME-4 noisy speech recognition corpus. The experiments were
-  	 done in MXNet and a demo implementation will be provided for free use.
+  	 batch construction strategies on the CHiME-4 noisy speech recognition corpus. 
   \end{abstract}
   \noindent{\bf Index Terms}: MXNet, bucketing, batches, recurrent neural networks
 
@@ -83,7 +82,7 @@
   	Neural network based acoustic modeling became the de-facto standard in automatic speech recognition (ASR)
   	and related tasks. Modeling contextual information over long distances in the input signal hereby showed to 
   	be of fundamental importance for optimal system performance. Modern acoustic models therefore use recurrent 
-  	neural networks (RNN) to model long temporal dependencies. In particular the long short-term memory (LSTM)
+  	neural networks (RNN) to model long temporal dependencies. In particular the long short-term memory (LSTM)~\cite{hochreiter1997lstm}
   	has been shown to work very well on these tasks and most current state-of-the-art systems incorporate LSTMs
   	in their acoustic models. While it is common practice to train the
   	models on a frame-by-frame labeling obtained from a 
@@ -118,8 +117,9 @@
     produces batches with large variability of sequences while at the same time reducing irrelevant computation to a minimum.
     The following sections we are going to give an overview over current batch construction strategies and compare them 
     w.r.t.~training time and variability. We will then derive our proposed method and discuss its properties on a theoretical
-    level, followed by an empirical evaluation on the CHiME-4 noisy speech recognition task. All experiments were implemented 
-    within the MXNet framework and are available for download on our website.
+    level, followed by an empirical evaluation on the CHiME-4 noisy speech recognition task. 
+    %All experiments were implemented 
+    %within the MXNet framework and are available for download on our website.
    
   \section{Related Work} \label{sec:related}
   	While mini-batch training was studied extensively for feed-forward networks \cite{Li16}, authors rarely reveal the batch construction strategy they used during training when 
@@ -141,12 +141,21 @@
   In each iteration of the mini-batch training a bucket is then selected randomly. Within the selected bucket a random span of sequences is chosen to be used as data batch. Note that this random shuffling only ensures a large inter-batch variance w.r.t.~the sequence length, while the variance 
   within each batch is small.
   
-  Bucketing is especially suited if the RNN model itself is not able to handle arbitrary 
+  Bucketing is especially useful if the RNN model itself does not support dynamic unrolling and 
+  is not able to handle arbitrary 
   long sequences but instead requires to store an unrolled version of the network for every possible 
   length. In those cases bucketing allows the framework to assign each batch to the shortest possible 
   unrolled network, while still optimizing the same shared weights.
 
   \section{Proposed Approach} \label{sec:approach}
+  
+  \begin{figure}
+   	\resizebox{0.45\textwidth}{!}{\includegraphics{plot}}
+   	\caption{Resulting sequence ordering for different batch construction strategies. The graphs 
+   	show the length distribution for 1000 randomly selected samples of the CHiME-4 training set. On the 
+   	vertical axis the length is plotted and on the X axis the utterance order. Bucketing was done with a bucket size of 250 and in the proposed approach we used 12 bins.}
+   	  \label{fig:plot}
+   \end{figure}
   
   In order to improve the intra-batch variability we propose a stochastic bucketing process. At the beginning
   of each epoch the utterances are arranged randomly and then partitioned into bins of equal size. Each bin
@@ -163,15 +172,19 @@
  			\item in increasing order if $n$ is odd
  			\item in decreasing order if $n$ is even
  		\end{itemize}
- 		\item partition into batches of desired size \\[1ex]
+ 		\item partition resulting order into batches of desired size \\[1ex]
  	\end{enumerate}
  \end{minipage}
 
  Due to the initial shuffling and subsequent partitioning the probability for two sequences of any length being 
- put into the same bin in $\frac{1}{N*(N-1)}$, so by increasing the number of bins, the variability within a 
+ put into the same bin in $\frac{1}{N\cdot(N-1)}$, so by increasing the number of bins, the variability within a 
  partition decreases quadratically while the variability among different partitions increases. The alternated
  sorting approach ensures that utterances at the boundaries of two consecutive bins are of similar length such 
  that the final partitioning into batches requires minimal zero padding.
+ 
+ Figure \ref{fig:plot} shows the length distribution for random and sorted sequence ordering as well as for bucketing in MXNet and the proposed approach. Note that in the case of bucketing batches are put
+ together by randomly choosing one of the buckets first, so the ordering does not directly represent 
+ the final set of batches.
 
   \section{Experimental Setup} \label{sec:setup}
   The 4th CHiME Speech Separation and Recognition Challenge
@@ -192,9 +205,12 @@
   \section{Experiments} \label{sec:experiments}
    In order to provide some perspective on the required context on the CHiME-4 task, 
    we provide results for experiments on sub-utterance (chunk) in 
-   Table \ref{tab:chime:chunk}. In the first columns we evaluate different sub-sequence lengths, while measuring the utterances that were processed per second, the memory required and the word error rate (WER) on the evaluation set of the CHiME-4 database. We can observe that 
+   Table \ref{tab:chime:chunk}. In the first columns we evaluate different sub-sequence lengths, while measuring the utterances that were processed per second, the memory required and the word error rate (WER) on the evaluation set of the CHiME-4 database. We hereby constrained batches to only 
+   contain 5,000 frames in total, such that the same number of updates is constant in all experiments. We can observe that 
    while large speed-ups can be obtained when training is done in this fashion, full-utterance context is
-   required for optimal performance.
+   required for optimal performance. However, it is worth noting that the memory requirement decreases 
+   significantly when sub-utterance training is applied and especially for unusually long utterances, 
+   sub-utterance training might be the only way to fit the data into GPU memory.
    
    For training on full sequences we conducted experiments with different batch construction strategies.
    The results are reported in Table \ref{tab:chime:batch}, where the first three rows show results for trivial sequence ordering 
@@ -212,11 +228,11 @@
 			\hline
 			Chunk size              & Utt./sec & Memory [GB] & WER [\%] \\
 			\hline
-			10     					&				 &			   &			 \\
-			50  					&				 &			   &    		 \\
-			100 					& 				 &			   &			 \\
-			500						& 				 &			   &			 \\
-			$\max$					&				 &			   &			 \\
+			10     					&	36.7   & 1.6         &			 \\
+			50  					&	31.1   & 1.6		 &    		 \\
+			100 					& 	29.6   & 1.6		 &			 \\
+			500						& 	17.3   & 1.6         &			 \\
+			$\max$					&	7.0	   & 5.4         &	8.9		 \\
 			\hline
 		\end{tabular}
 	\end{table}
@@ -230,19 +246,21 @@
 			\hline
 			Approach                & Utt./sec & Memory [GB] & WER [\%]          \\
 			\hline
-			Random 					&	       & 			 & 6.8		 \\
-			Sorted					& 		   &			 & 7.4		 \\
+			Random 					& $\sim$ 7.0     & $\sim$ 5.4		 & $\sim$ 8.9		 \\
+			Sorted					& 10.2    &	4.2 & 10.2		 \\
 			\hline
-			Bucketing				&		   &			 & 7.2		 \\
-			Proposed (4 bins)	    &		   &			 & 7.0		 \\
-			Proposed (64 bins)	    &		   &			 & 7.0		 \\
-			Proposed (256 bins)	    &		   &			 & 6.9		 \\
+			Bucketing				& 9.5     &	6.3		 & 9.6		 \\
+			Proposed (8 bins)	    & 10.1	   & 4.8     & 9.9		 \\
+			Proposed (64 bins)	    & 10.0     & 5.3     & 9.5		 \\
+			Proposed (256 bins)	    & 8.8	   & 6.0     & 9.1		 \\
 			\hline
 		\end{tabular}
 	\end{table}
 
   As expected, sorting the entire training set by sequence length reduces the required time 
-  per epoch to a minimum, while the best overall performance is obtained when sequences are shuffled randomly.
+  per epoch to a minimum, while the best overall performance is obtained when sequences are shuffled randomly. Both bucketing and the proposed 
+  approach are in between. We can observe that our method is able to reach almost the same recognition performance as using a randomly shuffled sequence
+  ordering, while being almost as fast as the sorted sequence scheduler. This allows for a good trade-off between runtime and system performance.
   
       
   \section{Conclusions}
@@ -252,7 +270,14 @@
 
    \section{Acknowledgements}
  
-   apptek?
+   This work has received funding from the European Research Council
+   (ERC) under the European Union’s Horizon 2020 research and innovation
+   program (SEQCLAS, grant agreement No 694537).  The work reflects
+   only the authors' views and the European Research Council Executive
+   Agency is not responsible for any use that may be made of the
+   information it contains.  We further want to thank Jahn Heymann, Lukas
+   Drude and Reinhold H\"ab-Umbach from University of Paderborn, Germany
+   for their CHiME-4 front-end which we used in this work.
    
    %\newpage
    \ninept

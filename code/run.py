@@ -21,7 +21,7 @@ parser.add_argument('--num-layers', type=int, default=3,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=512,
                     help='hidden layer size')
-parser.add_argument('--bidirectional', type=bool, default=True,
+parser.add_argument('--bidirectional', type=bool, default=False,
                     help='whether to use bidirectional layers')
 parser.add_argument('--gpus', type=str,
                     help='list of gpus to run, e.g. 0 or 0,2,5. empty means using cpu. ' \
@@ -30,15 +30,15 @@ parser.add_argument('--kv-store', type=str, default='device',
                     help='key-value store type')
 parser.add_argument('--num-epochs', type=int, default=25,
                     help='max num of epochs')
-parser.add_argument('--lr', type=float, default=0.1,
+parser.add_argument('--lr', type=float, default=0.01,
                     help='initial learning rate')
-parser.add_argument('--optimizer', type=str, default='sgd',
+parser.add_argument('--optimizer', type=str, default='adam',
                     help='the optimizer type')
 parser.add_argument('--mom', type=float, default=0.9,
                     help='momentum for sgd')
 parser.add_argument('--wd', type=float, default=0.00001,
                     help='weight decay for sgd')
-parser.add_argument('--batch-size', type=int, default=25,
+parser.add_argument('--batch-size', type=int, default=10,
                     help='the batch size.')
 parser.add_argument('--disp-batches', type=int, default=100,
                     help='show progress for every n batches')
@@ -80,7 +80,11 @@ class UtteranceIter(DataIter):
   def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
     if not sampling:
-      sampling = [i for i, j in enumerate([len(x) for x in utterances])] #[500::500]
+      minpad = 100
+      #sampling = [i for i, j in enumerate(np.bincount([len(s) for s in utterances]))]#[j for i, j in enumerate(set([len(x) for x in utterances]))] #[500::500]
+      sampling = range(minpad,max([len(s) for s in utterances]),minpad)
+    print sampling
+    #assert False
 
     self.idx = []
     if isinstance(sampling, list):
@@ -150,9 +154,9 @@ class UtteranceIter(DataIter):
       i, j = self.idx[self.curr_idx]
 
       data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size].T
-      data = ndarray.swapaxes(data, 1, 0) # TBD
-      #label = ndarray.swapaxes(label, 1, 0)
+      label = self.ndlabel[i][j:j + self.batch_size]
+      data = ndarray.swapaxes(data, 0, 1) # TBD
+      label = ndarray.swapaxes(label, 0, 1)
 
       batch = DataBatch([data], [label], pad=0,
                         bucket_key=self.sampling[i],
@@ -170,7 +174,7 @@ def read_hdf5(filename, batching='default'):
   xin = h5['inputs'][...]
   yin = h5['targets/data']['classes'][...]
   n_out = h5['targets/size'].attrs['classes']
-  
+
   utterances = []
   states = []
   offset = 0
@@ -253,13 +257,6 @@ def train(args):
     else:
         cell = mx.rnn.FusedRNNCell(args.num_hidden, num_layers=args.num_layers, dropout=args.dropout,
                                    mode='lstm', bidirectional=args.bidirectional)
-
-    def sym_gen2(seq_len):
-        sym = lstm_unroll(1, seq_len, 16, num_hidden=128,
-                          num_label=1501, num_hidden_proj=128)
-        data_names = ['data'] + state_names
-        label_names = ['softmax_label']
-        return (sym, data_names, label_names)
 
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
