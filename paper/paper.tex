@@ -12,6 +12,9 @@
 \usepackage{multirow}
 \usepackage{caption}
 \usepackage{subcaption}
+\usepackage[printwatermark]{xwatermark}
+\newwatermark[allpages,color=red!50,angle=45,scale=3,xpos=0,ypos=0]{DRAFT}
+
 %\usepackage{caption}
 %\RequirePackage{longtable}
 %\RequirePackage{tabularx}
@@ -69,14 +72,14 @@
   \maketitle
   %
   \begin{abstract}
-  	 In this work we compare different methods for sequence selection for mini-batch training
+  	 In this work we compare different batch construction methods for mini-batch training
   	 of recurrent neural networks. While popular implementations like TensorFlow and MXNet suggest 
   	 a bucketing approach to improve the parallelization capabilities of the recurrent training process, 
-  	 we propose several simple ordering strategies that are able to compete both in training time and 
-  	 recognition performance while being conceptually simpler. We compare our method with various other
-  	 batch construction strategies on the CHiME-4 noisy speech recognition corpus. 
+  	 we propose a simple ordering strategy that arranges in a stochastic alternating sorted way. We compare our method to sequence bucketing as well as various other
+  	 batch construction strategies on the CHiME-4 noisy speech recognition corpus. The experiments
+  	 show that our alternated sorting approach is able to compete both in training time and recognition performance while being conceptually simpler to implement. 
   \end{abstract}
-  \noindent{\bf Index Terms}: MXNet, bucketing, batches, recurrent neural networks
+  \noindent{\bf Index Terms}: bucketing, batches, recurrent neural networks
 
   \section{Introduction}
   	Neural network based acoustic modeling became the de-facto standard in automatic speech recognition (ASR)
@@ -84,28 +87,28 @@
   	be of fundamental importance for optimal system performance. Modern acoustic models therefore use recurrent 
   	neural networks (RNN) to model long temporal dependencies. In particular the long short-term memory (LSTM)~\cite{hochreiter1997lstm}
   	has been shown to work very well on these tasks and most current state-of-the-art systems incorporate LSTMs
-  	in their acoustic models. While it is common practice to train the
+  	into their acoustic models. While it is common practice to train the
   	models on a frame-by-frame labeling obtained from a 
   	previously trained system, sequence-level criteria that optimize the acoustic model and the alignment model jointly
   	are becoming increasingly popular. As an example, the connectionist temporal classification (CTC) \cite{CTC}
   	enables fully integrated training of acoustic models without assuming a frame-level alignment to be given. Sequence-level
   	criteria however require to train on full utterances, where it is possible to train frame-wise labeled systems
-  	on sub-sequences of any resolution.
+  	on sub-utterances of any resolution.
   	
     Training of recurrent neural networks for large vocabulary continuous speech recognition (LVCSR)
     tasks is computationally very expensive and the sequential nature of recurrent process prohibits to
-    parallelize the training over input frames. A robust optimization requires to work on large batches of sequences
+    parallelize the training over input frames. A robust optimization requires to work on large batches of utterances
     and training time as well as recognition performance can vary strongly depending on the choice of how
-    batches were put together. The main reason is that combining sequences of different length into the same batch requires 
-    to extend the length of each sequence to the longest sequence within the batch, usually by appending zeros. These zero frames 
+    batches were put together. The main reason is that combining utterances of different length into the same batch requires 
+    to extend the length of each utterance to the longest utterance within the batch, usually by appending zeros. These zero frames 
     are ignored later on when gradients are computed but the forward-propagation of zeros through the RNN is a waste of computing power.
     
-    A straight-forward strategy to minimize zero padding is to sort the sequences by length and to partition them into
+    A straight-forward strategy to minimize zero padding is to sort the utterances by length and to partition them into
     batches afterwards. However, there are significant drawbacks to this method. First, the sequence order remains constant in each epoch 
-    and therefore the intra-batch variability is very low since the same sequences are usually combined into the same batch. Second, the strategy favors putting very similar sequences into the same batch, since short sequences often tend to share other properties.
+    and therefore the intra-batch variability is very low since the same sequences are usually combined into the same batch. Second, the strategy favors putting similar utterances into the same batch, since short utterances often tend to share other properties.
     One way to overcome this limitation was proposed within TensorFlow and is also used as recommended 
-    behavior in MXNet. The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
-    a range of sequence lengths and each training sample is then assigned to the bucket that corresponds to its length.
+    strategy in MXNet. The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
+    a range of utterance lengths and each training sample is assigned to the bucket that corresponds to its length.
     Afterwards a batch is constructed from a randomly chosen bucket by selecting all or some sequences from it.
     The concept somehow mitigates the issue of zero padding if suitable length ranges can be defined, while still allowing for 
     some level of randomness at least when sequences are selected within a bucket. However, buckets have to be made very large 
@@ -113,7 +116,8 @@
     increase training time due to irrelevant computations on zero padded frames. Setting these hyper-parameters correctly is
     therefore of fundamental importance for fast and robust acoustic model training.
     
-    In this work we propose a simple batch construction strategy that does not rely on such a hyper-parametrization. The method 
+    In this work we propose a simple batch construction strategy that is easier to parametrize and
+    implement. The method 
     produces batches with large variability of sequences while at the same time reducing irrelevant computation to a minimum.
     The following sections we are going to give an overview over current batch construction strategies and compare them 
     w.r.t.~training time and variability. We will then derive our proposed method and discuss its properties on a theoretical
@@ -124,19 +128,19 @@
   \section{Related Work} \label{sec:related}
   	While mini-batch training was studied extensively for feed-forward networks \cite{Li16}, authors rarely reveal the batch construction strategy they used during training when 
   	RNN experiments are reported. This is because the systems are either trained in a frame-wise
-  	fashion ~\cite{2016arXiv161005256X} or because the analysis uses sequences very similar length as in \cite{PascanuMB13}. We studied in an earlier work \cite{Doetsch14} how in those cases training on sub-sequences can lead to significant faster and often also more robust training. 
-  	In \cite{Laurent16} the problem of having sequences of largely varying length in a batch was identified and 
-  	suggested to adapt the proposed batch-normalization method to a frame-level normalization, 
+  	fashion ~\cite{2016arXiv161005256X} or because the analysis uses sequences of very similar length as in \cite{PascanuMB13}. We studied in an earlier work \cite{Doetsch14} how in those cases training on sub-sequences can lead to significant faster and often also more robust training. 
+  	In \cite{Laurent16} the problem of having sequences of largely varying lengths in a batch was identified and the authors
+  	suggested to adapt their proposed batch-normalization method to a frame-level normalization, 
   	although a sequence-level normalization sounds theoretically more reasonable. In \cite{Bengio15} a curriculum learning strategy is proposed where sequences follow a specific scheduling in order to reduce overfitting.
   	
-  	Modern machine learning frameworks like Tensorflow \cite{tensorflow} and 
-  	MXNet \cite{mxnet} implement a bucketing approach based on the length of the sequence. In  \cite{Khomenko06} the authors extend this idea by selecting optimal sequences within each bucket using a dynamic programming technique.
+  	Modern machine learning frameworks like TensorFlow \cite{tensorflow} and 
+  	MXNet \cite{mxnet} implement a bucketing approach based on the lengths distribution of the sequences. In \cite{Khomenko06} the authors extend this idea by selecting optimal sequences within each bucket using a dynamic programming technique.
 
   \section{Bucketing in MXNet} \label{sec:bucketing}
   Borrowed from TensorFlow's sequence training example, MXNet implements bucketing by 
   clustering sequences into bins depending on their length. The size of each bin, i.e.~ the span of 
   sequence lengths associated with this bin, has to be specified by the user and optimal values 
-  depend on the ASR task. The sampling process can be done in logarithmic time, since for each sequence length in the training set a binary search over the bins can be performed. 
+  depend on the ASR task. The sampling process can be done in logarithmic time, since for each sequence length in the training set a binary search over the bins has to be performed. 
     
   In each iteration of the mini-batch training a bucket is then selected randomly. Within the selected bucket a random span of sequences is chosen to be used as data batch. Note that this random shuffling only ensures a large inter-batch variance w.r.t.~the sequence length, while the variance 
   within each batch is small.
@@ -189,11 +193,11 @@
   \section{Experimental Setup} \label{sec:setup}
   The 4th CHiME Speech Separation and Recognition Challenge
   \cite{Vincent_CSL2016:CHiME4} consists of noisy utterances spoken by speakers in challenging 
-  environments. Recorded was done using a 6-channel microphone array on a tablet. The dataset revisits 
+  environments. Recording was done using a 6-channel microphone array on a tablet. The dataset revisits 
   the CHiME-3 corpus that was published one year before the challenge took place \cite{Barker2015:CHiME3}.
   
   We extracted 16-dimensional MFCC vectors as in \cite{menne16:chime4System} from the six sub-corpora
-  and used them as features for the neural network models. The allophones of the lexicon were clustered into 
+  and used them as features for the neural network models. The context-dependent phonemes extracted from the lexicon were clustered into 
   1500 state labels using a classification and regression tree (CART).
   We trained a three state HMM without skip transitions applied it in a forced alignment mode to the training data in order to obtain a frame-wise labeling. A three layer 
   bi-directional LSTM followed a softmax layer was trained to minimize the cross-entropy of the softmax output and the CART label sequence at each frame. Optimization was done with the Adam optimizer and a constant learning rate of 0.01. We used MXNet \cite{mxnet} for experiments using the bucketing approach and RETURNN \cite{doetsch2017:returnn} for the other methods.  
@@ -204,8 +208,8 @@
 
   \section{Experiments} \label{sec:experiments}
    In order to provide some perspective on the required context on the CHiME-4 task, 
-   we provide results for experiments on sub-utterance (chunk) in 
-   Table \ref{tab:chime:chunk}. In the first columns we evaluate different sub-sequence lengths, while measuring the utterances that were processed per second, the memory required and the word error rate (WER) on the evaluation set of the CHiME-4 database. We hereby constrained batches to only 
+   we performed experiments on sub-utterance (chunk) which are presented in 
+   Table \ref{tab:chime:chunk}. In the first columns we evaluate different sub-utterance lengths, while measuring the utterances that were processed per second, the memory required and the word error rate (WER) on the evaluation set of the CHiME-4 database. We hereby constrained batches to only 
    contain 5,000 frames in total, such that the same number of updates is constant in all experiments. We can observe that 
    while large speed-ups can be obtained when training is done in this fashion, full-utterance context is
    required for optimal performance. However, it is worth noting that the memory requirement decreases 
@@ -214,25 +218,25 @@
    
    For training on full sequences we conducted experiments with different batch construction strategies.
    The results are reported in Table \ref{tab:chime:batch}, where the first three rows show results for trivial sequence ordering 
-   methods. The last two rows then provide a direct comparison of the bucketing approach as 
+   methods and the last two rows provide a direct comparison of the bucketing approach as 
    it is implemented in MXNet and the alternated sorting approach as proposed in this paper.
     
 	\begin{table}[tbp]
 		\centering
 		\caption{Training time and recognition performance when training is done 
-		on sub-sequence level. The first column shows the maximal sub-sequence length 
+		on sub-utterances level. The first column shows the maximal sub-utterance length 
 		after partitioning of the original sequence. The last line shows the results 
-		if no partitioning into sub-sequence is performed. }
+		if no partitioning into sub-utterances is performed. }
 		\label{tab:chime:chunk}
 		\begin{tabular}{lrrr}
 			\hline
 			Chunk size              & Utt./sec & Memory [GB] & WER [\%] \\
 			\hline
-			10     					&	36.7   & 1.6         &			 \\
-			50  					&	31.1   & 1.6		 &    		 \\
-			100 					& 	29.6   & 1.6		 &			 \\
-			500						& 	17.3   & 1.6         &			 \\
-			$\max$					&	7.0	   & 5.4         &	8.9		 \\
+			10     					&	36.7   & 1.6         &	21.3     \\
+			50  					&	31.1   & 1.6		 &  10.1     \\
+			100 					& 	29.6   & 1.6		 &	9.2      \\
+			500						& 	17.3   & 1.6         &	9.0      \\
+			$\max$					&	7.0	   & 5.4         &	8.9      \\
 			\hline
 		\end{tabular}
 	\end{table}
@@ -249,7 +253,7 @@
 			Random 					& $\sim$ 7.0     & $\sim$ 5.4		 & $\sim$ 8.9		 \\
 			Sorted					& 10.2    &	4.2 & 10.2		 \\
 			\hline
-			Bucketing				& 9.5     &	6.3		 & 9.6		 \\
+			Bucketing (MXNet)		& 9.5     &	6.3		 & 9.6		 \\
 			Proposed (8 bins)	    & 10.1	   & 4.8     & 9.9		 \\
 			Proposed (64 bins)	    & 10.0     & 5.3     & 9.5		 \\
 			Proposed (256 bins)	    & 8.8	   & 6.0     & 9.1		 \\
@@ -257,10 +261,10 @@
 		\end{tabular}
 	\end{table}
 
-  As expected, sorting the entire training set by sequence length reduces the required time 
-  per epoch to a minimum, while the best overall performance is obtained when sequences are shuffled randomly. Both bucketing and the proposed 
+  As expected, sorting the entire training set by utterance length reduces the required time 
+  per epoch to a minimum, while the best overall performance is obtained when utterances are shuffled randomly. Both bucketing and the proposed 
   approach are in between. We can observe that our method is able to reach almost the same recognition performance as using a randomly shuffled sequence
-  ordering, while being almost as fast as the sorted sequence scheduler. This allows for a good trade-off between runtime and system performance.
+  ordering, while being almost as fast as the sorted utterance scheduler. This allows for a good trade-off between runtime and system performance.
   
       
   \section{Conclusions}
