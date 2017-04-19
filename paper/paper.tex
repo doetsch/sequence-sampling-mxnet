@@ -104,7 +104,7 @@
     batches afterwards. However, there are significant drawbacks to this method. First, the sequence order remains constant in each epoch 
     and therefore the intra-batch variability is very low since the same sequences are usually combined into the same batch. Second, the strategy favors putting very similar sequences into the same batch, since short sequences often tend to share other properties.
     One way to overcome this limitation was proposed within TensorFlow and is also used as recommended 
-    behavior in MXNet The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
+    behavior in MXNet. The idea is to perform a \textit{bucketing} of the training corpus, where each bucket represents
     a range of sequence lengths and each training sample is then assigned to the bucket that corresponds to its length.
     Afterwards a batch is constructed from a randomly chosen bucket by selecting all or some sequences from it.
     The concept somehow mitigates the issue of zero padding if suitable length ranges can be defined, while still allowing for 
@@ -196,7 +196,7 @@
   and used them as features for the neural network models. The allophones of the lexicon were clustered into 
   1500 state labels using a classification and regression tree (CART).
   We trained a three state HMM without skip transitions applied it in a forced alignment mode to the training data in order to obtain a frame-wise labeling. A three layer 
-  bi-directional LSTM followed a softmax layer was trained to minimize the cross-entropy of the softmax output and the CART label sequence at each frame. Optimization was done with the Adam optimizer and a constant learning rate of 0.01.
+  bi-directional LSTM followed a softmax layer was trained to minimize the cross-entropy of the softmax output and the CART label sequence at each frame. Optimization was done with the Adam optimizer and a constant learning rate of 0.01. We used MXNet \cite{mxnet} for experiments using the bucketing approach and RETURNN \cite{doetsch2017:returnn} for the other methods.  
   
   After training, state posteriors were extracted from the softmax for each observation of the evaluation set. The posteriors were then decoded in the RWTH 
   speech recognition toolkit RASR \cite{rybach2011:rasr} using the hybrid HMM approach. A 4-gram LM 
@@ -265,8 +265,12 @@
       
   \section{Conclusions}
     In this work we presented a novel strategy to construct sequence-level batches for recurrent 
-    neural network training. Most frameworks rely on a bucketing approach by clustering sequences of similar length into bins and to create batches from each bin individually. We showed that we can achieve a better runtime performance using a simpler batch design, by partitioning a shuffled sequence order and to sort the partitions in alternating order. The method was evaluated on the ChiME-4 noisy speech recognition task and 
-    compared to the bucketing approach of MXNet.
+    neural network acoustic model training. While not much attention is given to the topic 
+    of batch construction, we demonstrate that different strategies can lead to large variations 
+    both in training time and recognition performance. Most deep-learning frameworks rely on a bucketing approach by clustering sequences of similar length into bins and to create batches from each bin individually. We showed that we can achieve a better runtime performance using a simpler batch design, by partitioning a shuffled sequence order and to sort the partitions in alternating order. The method was evaluated on the ChiME-4 noisy speech recognition task and 
+    compared to standard approaches like random sequence shuffling and the bucketing approach of MXNet,
+    where our method was able to reach a better trade-off between training time and recognition performance while being easier to parametrize than the bucketing method.
+    
 
    \section{Acknowledgements}
  
