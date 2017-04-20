@@ -147,7 +147,6 @@ class UtteranceIter(DataIter):
     self.label_name = label_name
     self.sampling = sampling
     self.default_key = max(sampling)
-    self.names = names
     self.shuffle = shuffle
 
     # we assume time major layout
@@ -411,12 +410,12 @@ def test(args):
       outputs = model.get_outputs()
       pcx = np.log(outputs[0].asnumpy().astype('float32'))
 
-      print pcx.shape
       batch_size = len(batch.utt_names)
       pcx = pcx.reshape((pcx.shape[0]/batch_size,batch_size,pcx.shape[1]))
       pcx = pcx.swapaxes(0, 1)
 
       for i in xrange(batch_size):
+        print batch.utt_names[i]
         length = batch.utt_lens[i]
         times = zip(range(0, length), range(1, length + 1))
         cache.addFeatureCache(batch.utt_names[i] + '/1', pcx[i][:length], times)
