@@ -132,6 +132,9 @@ class UtteranceIter(DataIter):
         self.lengths[buck].append(len(utt))
       for i, buck in enumerate(self.data):
         self.idx.extend([(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
+        if len(buck) % batch_size != 0:
+          self.idx.append((i,len(buck)-len(buck)%batch_size)) #[(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
+
     else:
       raise NotImplementedError('sampling %s not supported' % str(sampling))
 
@@ -180,10 +183,13 @@ class UtteranceIter(DataIter):
     if isinstance(self.sampling, list):
       i, j = self.idx[self.curr_idx]
 
-      data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size]
-      names = self.names[i][j:j + self.batch_size]
-      lens = self.lengths[i][j:j + self.batch_size]
+      slice_end = min(self.nddata[i].shape[0],j+self.batch_size)
+      #slice_end = j + self.batch_size
+
+      data = self.nddata[i][j:slice_end]
+      label = self.ndlabel[i][j:slice_end]
+      names = self.names[i][j:slice_end]
+      lens = self.lengths[i][j:slice_end]
       data = ndarray.swapaxes(data, 0, 1) # TBD
       label = ndarray.swapaxes(label, 0, 1)
 
@@ -377,7 +383,7 @@ def test(args):
         label = mx.sym.Reshape(label, shape=(-1,))
         out = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax', ignore_label=-1, multi_output=True,
                                     use_ignore=True)
-        lg = mx.sym.log_softmax(data=pred, name='softmax') #+ label
+        #lg = mx.sym.log_softmax(data=pred, name='softmax') #+ label
 
         return out, ('data',), ('labels',)
 
