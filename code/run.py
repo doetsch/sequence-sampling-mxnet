@@ -382,8 +382,7 @@ def test(args):
 
         label = mx.sym.Reshape(label, shape=(-1,))
         out = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax', ignore_label=-1, multi_output=True,
-                                    use_ignore=True)
-        #lg = mx.sym.log_softmax(data=pred, name='softmax') #+ label
+                                   use_ignore=True)
 
         return out, ('data',), ('labels',)
 
