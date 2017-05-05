@@ -72,23 +72,22 @@ class UtteranceIter(DataIter):
       either 'sorted' or 'random' 
       or number of bins in sinusoidal sampling 
       or size of data buckets (automatically generated if None).
-  layout : str
-      format of data and label. 'NT' means (batch_size, length)
-      and 'TN' means (length, batch_size).
   """
 
-  def __init__(self, utterances, states, names, batch_size, sampling, data_name='data', label_name='labels', shuffle=True):
+  def __init__(self, utterances, states, names, batch_size, batching, data_name='data', label_name='labels', shuffle=True):
     super(UtteranceIter, self).__init__()
-    if not sampling:
-      minpad = 100
-      sampling = range(minpad,max([len(s) for s in utterances]),minpad)
+    minpad = 100
+    sampling = range(minpad,max([len(s) for s in utterances]),minpad)
+    self.max_len = max([len(utt) for utt in utterances])
+    if sampling[-1] < self.max_len:
+        sampling.append(self.max_len)
 
     self.idx = []
-    if isinstance(sampling, list):
-      sampling.sort()
-      self.max_len = max([len(utt) for utt in utterances])
-      if sampling[-1] < self.max_len:
-        sampling.append(self.max_len)
+    if isinstance(batching, list):
+      batching.sort()
+      if batching[-1] < self.max_len:
+        batching.append(self.max_len)
+      sampling = batching
 
       self.data = [[] for _ in sampling]
       self.labels = [[] for _ in sampling]
@@ -105,7 +104,7 @@ class UtteranceIter(DataIter):
       for i, buck in enumerate(self.data):
         self.idx.extend([(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
     else:
-      raise NotImplementedError('sampling %s not supported' % str(sampling))
+      self.idx.extend([[0,j] for j in range(0, len(utterances) - batch_size + 1, batch_size)])
 
     self.data = [np.asarray(i, dtype='float32') for i in self.data] # BTD
     self.labels = [np.asarray(i, dtype='float32') for i in self.labels] # BT
@@ -113,6 +112,7 @@ class UtteranceIter(DataIter):
 
     self.batch_size = batch_size
     self.sampling = sampling
+    self.batching = batching
     self.nddata = []
     self.ndlabel = []
     self.data_name = data_name
@@ -130,8 +130,10 @@ class UtteranceIter(DataIter):
 
   def reset(self):
     self.curr_idx = 0
+    self.nddata = []
+    self.ndlabel = []
 
-    if isinstance(self.sampling, list):
+    if isinstance(self.batching, list):
       if self.shuffle:
         random.shuffle(self.idx) # shuffle bucket index
         for buck_utt, buck_lab in zip(self.data,self.labels): # shuffle sequence index within bucket
@@ -140,11 +142,12 @@ class UtteranceIter(DataIter):
           np.random.set_state(rng_state)
           np.random.shuffle(buck_lab)
 
-      self.nddata = []
-      self.ndlabel = []
       for buck_utt,buck_lab in zip(self.data,self.labels):
         self.nddata.append(ndarray.array(buck_utt, dtype='float32'))
         self.ndlabel.append(ndarray.array(buck_lab, dtype='float32'))
+    elif self.batching == 'sorted':
+      self.idx.sort(key = lambda x:x[1])
+      
 
   def next(self):
     if self.curr_idx == len(self.idx):
@@ -162,6 +165,8 @@ class UtteranceIter(DataIter):
                         bucket_key=self.sampling[i],
                         provide_data=[(self.data_name, data.shape)],
                         provide_label=[(self.label_name, label.shape)])
+    elif self.batching == 'sorted':
+      pass
     else:
       assert False
 
