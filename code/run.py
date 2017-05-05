@@ -17,6 +17,8 @@ parser.add_argument('--load-epoch', type=int, default=0,
                     help='load from epoch')
 parser.add_argument('--output-file', type=str, default='out.cache',
                     help='posterior output cache file')
+parser.add_argument('--input-file', type=str, default='data/valid.0001',
+                    help='feature input file')
 parser.add_argument('--num-layers', type=int, default=3,
                     help='number of stacked RNN layers')
 parser.add_argument('--num-hidden', type=int, default=512,
@@ -57,6 +59,29 @@ parser.add_argument('--sampling', type=str, default=None,
                     help='sequence batch sampling method: random, sorted, #partitions '
                          'in sinusoidal sampling or comma separated list of buckets')
 
+
+class UtteranceBatch(object):
+  def __init__(self, data_names, data, label_names, label, bucket_key,
+               utt_names=None, utt_lens=0):
+    self.data = data
+    self.label = label
+    self.data_names = data_names
+    self.label_names = label_names
+    self.bucket_key = bucket_key
+    self.utt_names = utt_names
+    self.utt_lens = utt_lens
+
+  @property
+  def provide_data(self):
+    return [(n, x.shape) for n, x in zip(self.data_names, self.data)]
+
+  @property
+  def provide_label(self):
+    if len(self.label_names):
+      return [(n, x.shape) for n, x in zip(self.label_names, self.label)]
+    else:
+      return None
+
 class UtteranceIter(DataIter):
   """A data iterator for acoustic modeling of frame-wise labeled data.
   The iterator supports bucketing based on predefined bucket sizes,
@@ -91,7 +116,9 @@ class UtteranceIter(DataIter):
 
       self.data = [[] for _ in sampling]
       self.labels = [[] for _ in sampling]
-      for utt, lab in zip(utterances, states):
+      self.names = [[] for _ in sampling]
+      self.lengths = [[] for _ in sampling]
+      for utt, lab, name in zip(utterances, states, names):
         buck = bisect.bisect_left(sampling, len(utt))
         xin = np.full((sampling[buck],len(utt[0])), -1, dtype='float32')
         n_in = len(utt[0])
@@ -100,9 +127,13 @@ class UtteranceIter(DataIter):
         yout[:len(utt)] = lab
         self.data[buck].append(xin)
         self.labels[buck].append(yout)
-
+        self.names[buck].append(name)
+        self.lengths[buck].append(len(utt))
       for i, buck in enumerate(self.data):
         self.idx.extend([(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
+        if len(buck) % batch_size != 0:
+          self.idx.append((i,len(buck)-len(buck)%batch_size)) #[(i, j) for j in range(0, len(buck) - batch_size + 1, batch_size)])
+
     else:
       self.idx.extend([[0,j] for j in range(0, len(utterances) - batch_size + 1, batch_size)])
 
@@ -119,7 +150,6 @@ class UtteranceIter(DataIter):
     self.label_name = label_name
     self.sampling = sampling
     self.default_key = max(sampling)
-    self.names = names
     self.shuffle = shuffle
 
     # we assume time major layout
@@ -156,17 +186,20 @@ class UtteranceIter(DataIter):
     if isinstance(self.sampling, list):
       i, j = self.idx[self.curr_idx]
 
-      data = self.nddata[i][j:j + self.batch_size]
-      label = self.ndlabel[i][j:j + self.batch_size]
+      slice_end = min(self.nddata[i].shape[0],j+self.batch_size)
+      #slice_end = j + self.batch_size
+
+      data = self.nddata[i][j:slice_end]
+      label = self.ndlabel[i][j:slice_end]
+      names = self.names[i][j:slice_end]
+      lens = self.lengths[i][j:slice_end]
       data = ndarray.swapaxes(data, 0, 1) # TBD
       label = ndarray.swapaxes(label, 0, 1)
-
-      batch = DataBatch([data], [label], pad=0,
-                        bucket_key=self.sampling[i],
-                        provide_data=[(self.data_name, data.shape)],
-                        provide_label=[(self.label_name, label.shape)])
-    elif self.batching == 'sorted':
-      pass
+      batch = UtteranceBatch([self.data_name], [data],
+                             [self.label_name], [label],
+                             bucket_key=self.sampling[i],
+                             utt_names=names,
+                             utt_lens=lens)
     else:
       assert False
 
@@ -195,7 +228,7 @@ def read_hdf5(filename, batching='default'):
 
 def get_data():
     train_n, train_x, train_y, n_out = read_hdf5('./data/train.0001')
-    valid_n, valid_x, valid_y, _ = read_hdf5('./data/valid.0001')
+    valid_n, valid_x, valid_y, _ = read_hdf5(args.input_file)
 
     sampling = args.sampling
     if sampling is not None:
@@ -245,9 +278,15 @@ class PosteriorExtraction(mx.metric.EvalMetric):
 
   def update(self, labels, preds):
     for label, pred_label in zip(labels, preds):
-      pred_label = np.log(pred_label.asnumpy().astype('float32'))
+      idx = np.where(label.asnumpy() != -1)[0]
+      #print idx
+      pcx = pred_label.asnumpy().astype('float32')
+      #print pcx[idx[0]]
+      #print pcx.shape
+      pred_label = np.log(pcx)[idx]
       times = zip(range(0, pred_label.shape[0]), range(1, pred_label.shape[0] + 1))
-      self.file.addFeatureCache(self.names[self.cur_idx],pred_label,times)
+      self.file.addFeatureCache(self.names[self.cur_idx] + '/1',pred_label,times)
+      self.cur_idx += 1
 
 def train(args):
     data_train, data_val, n_out = get_data()
@@ -266,8 +305,6 @@ def train(args):
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
-        #data = mx.sym.swapaxes(data,dim1=0,dim2=1)
-        #label = mx.sym.swapaxes(label, dim1=0, dim2=1)
 
         output, _ = cell.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
         pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
@@ -320,7 +357,7 @@ def train(args):
                               if args.model_prefix else None)
 
 def test(args):
-    assert args.model_prefix, "Must specifiy path to load from"
+    assert args.model_prefix, "Must specify path to load from"
     _, data_val, n_out = get_data()
 
     if not args.stack_rnn:
@@ -340,14 +377,16 @@ def test(args):
     def sym_gen(seq_len):
         data = mx.sym.Variable('data')
         label = mx.sym.Variable('labels')
+        stack.reset()
         output, _ = stack.unroll(seq_len, inputs=data, merge_outputs=True, layout='TNC')
-        pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden*(1+args.bidirectional)))
-        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out+1, name='pred')
+        pred = mx.sym.Reshape(output, shape=(-1, args.num_hidden * (1 + args.bidirectional)))
+        pred = mx.sym.FullyConnected(data=pred, num_hidden=n_out, name='pred')
 
         label = mx.sym.Reshape(label, shape=(-1,))
-        pred = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax')
+        out = mx.sym.SoftmaxOutput(data=pred, label=label, name='softmax', ignore_label=-1, multi_output=True,
+                                   use_ignore=True)
 
-        return pred, ('data',), ('labels',)
+        return out, ('data',), ('labels',)
 
     if args.gpus:
         contexts = [mx.gpu(int(i)) for i in args.gpus.split(',')]
@@ -363,9 +402,32 @@ def test(args):
     # note here we load using SequentialRNNCell instead of FusedRNNCell.
     _, arg_params, aux_params = mx.rnn.load_rnn_checkpoint(stack, args.model_prefix, args.load_epoch)
     model.set_params(arg_params, aux_params)
-    extr = PosteriorExtraction(args.output_file, data_val.names)
-    model.score(data_val, extr, batch_end_callback=mx.callback.Speedometer(args.batch_size, 5))
-    extr.finalize()
+    #extr = PosteriorExtraction(args.output_file, data_val.names)
+    #model.score(data_val, extr, batch_end_callback=mx.callback.Speedometer(args.batch_size, 5))
+    #extr.finalize()
+
+    import SprintCache
+    import os
+    if os.path.exists(args.output_file):
+      os.remove(args.output_file)
+    cache = SprintCache.FileArchive(args.output_file)
+
+    for batch in data_val:
+      model.forward(batch, is_train=False)
+      outputs = model.get_outputs()
+      pcx = np.log(outputs[0].asnumpy().astype('float32'))
+
+      batch_size = len(batch.utt_names)
+      pcx = pcx.reshape((pcx.shape[0]/batch_size,batch_size,pcx.shape[1]))
+      pcx = pcx.swapaxes(0, 1)
+
+      for i in xrange(batch_size):
+        print batch.utt_names[i]
+        length = batch.utt_lens[i]
+        times = zip(range(0, length), range(1, length + 1))
+        cache.addFeatureCache(batch.utt_names[i] + '/1', pcx[i][:length], times)
+
+    cache.finalize()
 
 if __name__ == '__main__':
     import logging
